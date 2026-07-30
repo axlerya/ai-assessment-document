@@ -95,13 +95,18 @@ def make_document(
     )
 
 
+def version_of(document: Document) -> PipelineVersion:
+    """Версия, которой обрабатывается документ; у необработанного её нет."""
+    return document.pipeline_version or PIPELINE_VERSION
+
+
 def make_text_layer_page(document: Document, *, number: int = 1) -> DocumentPage:
     """Страница из текстового слоя: уверенности нет, рендера нет."""
     return DocumentPage.from_text_layer(
         page_id=PageId(uuid.uuid4()),
         document_id=document.id,
         number=PageNumber(number),
-        pipeline_version=document.pipeline_version,
+        pipeline_version=version_of(document),
         content=PAGE_TEXT,
         now=NOW,
     )
@@ -118,7 +123,7 @@ def make_ocr_page(
         id=PageId(uuid.uuid4()),
         document_id=document.id,
         number=PageNumber(number),
-        pipeline_version=document.pipeline_version,
+        pipeline_version=version_of(document),
         status=PageStatus.EXTRACTED,
         text=RecognizedText(
             content=PAGE_TEXT,
@@ -139,7 +144,7 @@ def make_illegible_page(document: Document, *, number: int = 3) -> DocumentPage:
         id=PageId(uuid.uuid4()),
         document_id=document.id,
         number=PageNumber(number),
-        pipeline_version=document.pipeline_version,
+        pipeline_version=version_of(document),
         status=PageStatus.PARTIALLY_ILLEGIBLE,
         text=RecognizedText(
             content=PAGE_TEXT,
@@ -168,7 +173,7 @@ def make_failed_page(document: Document, *, number: int = 4) -> DocumentPage:
         page_id=PageId(uuid.uuid4()),
         document_id=document.id,
         number=PageNumber(number),
-        pipeline_version=document.pipeline_version,
+        pipeline_version=version_of(document),
         reason=PageFailureReason.RENDER_FAILED,
         message="страница не отрендерилась",
         now=NOW,
@@ -216,7 +221,7 @@ def make_job(
         document_id=document.id,
         event_id=event_id or EventId(uuid.uuid4()),
         correlation_id=document.correlation_id,
-        pipeline_version=document.pipeline_version,
+        pipeline_version=version_of(document),
         status=status,
         attempt=1,
         scheduled_at=NOW,

@@ -121,8 +121,12 @@ def object_refs() -> st.SearchStrategy[ObjectRef]:
     """Ссылка на объект хранилища."""
     return st.builds(
         ObjectRef,
-        bucket=st.from_regex(r"\A[a-z0-9][a-z0-9-]{1,20}[a-z0-9]\Z"),
-        key=st.from_regex(r"\A[a-z0-9][a-z0-9/._-]{0,60}\Z"),
+        bucket=st.text("abcdefghijklmnopqrstuvwxyz0123456789-", min_size=3, max_size=20)
+        .filter(lambda value: value[0].isalnum() and value[-1].isalnum())
+        .filter(lambda value: ".." not in value),
+        key=st.text("abcdefghijklmnopqrstuvwxyz0123456789/._-", min_size=1, max_size=60)
+        .filter(lambda value: value[0].isalnum())
+        .filter(lambda value: ".." not in value.split("/")),
     )
 
 
@@ -189,7 +193,9 @@ def illegible_spans(draw: st.DrawFn, content: str) -> tuple[IllegibleSpan, ...]:
     """Непересекающиеся отсортированные диапазоны внутри текста."""
     if not content:
         return ()
-    count = draw(st.integers(min_value=1, max_value=3))
+    # Каждому диапазону нужны две различные границы, поэтому их число ограничено
+    # длиной текста, а не только желаемым.
+    count = draw(st.integers(min_value=1, max_value=max(1, min(3, len(content) // 2))))
     bounds = sorted(
         draw(
             st.lists(
@@ -249,19 +255,20 @@ def pages(
 ) -> DocumentPage:
     """Страница, согласованная со своим статусом и способом извлечения."""
     status = draw(st.sampled_from(PageStatus))
+    page_id = PageId(draw(uuids()))
+    owner = document_id or DocumentId(draw(uuids()))
+    number = PageNumber(draw(st.integers(min_value=1, max_value=MAX_PAGES)))
+    version = pipeline_version or draw(pipeline_versions())
     created_at = draw(timestamps())
-    common = {
-        "id": PageId(draw(uuids())),
-        "document_id": document_id or DocumentId(draw(uuids())),
-        "number": PageNumber(draw(st.integers(min_value=1, max_value=MAX_PAGES))),
-        "pipeline_version": pipeline_version or draw(pipeline_versions()),
-        "created_at": created_at,
-    }
     if status is PageStatus.FAILED:
         return DocumentPage(
-            **common,
+            id=page_id,
+            document_id=owner,
+            number=number,
+            pipeline_version=version,
             status=status,
             text=RecognizedText.not_extracted(),
+            created_at=created_at,
             failure=PageFailure(
                 reason=draw(st.sampled_from(PageFailureReason)),
                 message=draw(st.text(TEXT_ALPHABET, min_size=0, max_size=200)),
@@ -286,12 +293,15 @@ def pages(
         method = draw(st.sampled_from([ExtractionMethod.OCR, ExtractionMethod.HYBRID]))
         spans = draw(illegible_spans(content))
         if not spans:
-            content = draw(st.text(TEXT_ALPHABET, min_size=1, max_size=120))
+            content = draw(st.text(TEXT_ALPHABET, min_size=2, max_size=120))
             spans = draw(illegible_spans(content))
 
     ocr_based = method.is_ocr_based
     return DocumentPage(
-        **common,
+        id=page_id,
+        document_id=owner,
+        number=number,
+        pipeline_version=version,
         status=status,
         text=RecognizedText(
             content=content,
@@ -299,6 +309,7 @@ def pages(
             confidence=draw(confidences()) if ocr_based else None,
             illegible_spans=spans,
         ),
+        created_at=created_at,
         image_ref=draw(object_refs()) if ocr_based else None,
         render_dpi=draw(st.integers(min_value=MIN_RENDER_DPI, max_value=MAX_RENDER_DPI))
         if ocr_based

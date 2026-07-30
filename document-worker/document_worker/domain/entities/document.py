@@ -67,7 +67,9 @@ class Document:
     id: DocumentId
     source: SourceFile
     status: DocumentStatus
-    pipeline_version: PipelineVersion
+    # None означает «ещё ни разу не обрабатывался»: версию выбирает воркер,
+    # а строку создаёт сервис приёма файлов, который её не знает.
+    pipeline_version: PipelineVersion | None
     correlation_id: CorrelationId
     created_at: datetime
     updated_at: datetime
@@ -110,10 +112,20 @@ class Document:
         """
         _require_utc(now, "now")
         target = pipeline_version or self.pipeline_version
-        if self.status.is_terminal and not target.is_newer_than(self.pipeline_version):
+        if target is None:
+            raise InvariantViolation(
+                "обработка не начинается без версии пайплайна",
+                context={"document_id": str(self.id)},
+            )
+        previous = self.pipeline_version
+        if (
+            self.status.is_terminal
+            and previous is not None
+            and not target.is_newer_than(previous)
+        ):
             raise InvalidStatusTransition(
                 "повторная обработка требует более новой версии пайплайна",
-                context={"current": str(self.pipeline_version), "target": str(target)},
+                context={"current": str(previous), "target": str(target)},
             )
         self.status.ensure_can_transition_to(DocumentStatus.PROCESSING)
 
@@ -211,7 +223,7 @@ class Document:
             DocumentProcessingFailed(
                 document_id=self.id,
                 correlation_id=self.correlation_id,
-                pipeline_version=self.pipeline_version,
+                pipeline_version=self._require_pipeline_version(),
                 occurred_at=now,
                 error_code=code,
                 error_message=message,
@@ -222,6 +234,14 @@ class Document:
             )
         )
         return CompletionOutcome.APPLIED
+
+    def _require_pipeline_version(self) -> PipelineVersion:
+        if self.pipeline_version is None:
+            raise InvariantViolation(
+                "у необработанного документа нет версии пайплайна",
+                context={"document_id": str(self.id)},
+            )
+        return self.pipeline_version
 
     def pull_events(self) -> tuple[DomainEvent, ...]:
         """Забирает накопленные события и очищает буфер."""
@@ -258,7 +278,7 @@ class Document:
             return DocumentProcessed(
                 document_id=self.id,
                 correlation_id=self.correlation_id,
-                pipeline_version=self.pipeline_version,
+                pipeline_version=self._require_pipeline_version(),
                 occurred_at=now,
                 pages_total=stats.pages_total,
                 pages_text_layer=stats.pages_text_layer,
@@ -274,7 +294,7 @@ class Document:
         return DocumentPartiallyProcessed(
             document_id=self.id,
             correlation_id=self.correlation_id,
-            pipeline_version=self.pipeline_version,
+            pipeline_version=self._require_pipeline_version(),
             occurred_at=now,
             pages_total=stats.pages_total,
             pages_text_layer=stats.pages_text_layer,
