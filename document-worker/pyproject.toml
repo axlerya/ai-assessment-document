@@ -35,6 +35,7 @@ test = [
     "pytest-randomly>=4.1.0",
     "pytest-timeout>=2.4.0",
     "coverage[toml]>=7.15.2",
+    "hypothesis>=6.145",
 ]
 lint = ["ruff>=0.16.0", "import-linter>=2.13", "deptry>=0.25.1", "pip-audit>=2.10.1"]
 typing = ["mypy>=2.3.0"]
