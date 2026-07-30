@@ -40,6 +40,15 @@ class ProcessedMessageRow(Base):
             "status <> 'completed' OR completed_at IS NOT NULL",
             name="completed_has_timestamp",
         ),
+        CheckConstraint(
+            "status <> 'completed' OR outcome IS NOT NULL",
+            name="completed_has_outcome",
+        ),
+        CheckConstraint(
+            "outcome IS NULL"
+            " OR outcome IN ('processed','partially_processed','failed')",
+            name="outcome",
+        ),
         CheckConstraint("attempts >= 1", name="attempts"),
         CheckConstraint(
             "completed_at IS NULL OR completed_at >= first_seen_at",
@@ -63,6 +72,7 @@ class ProcessedMessageRow(Base):
     pipeline_version: Mapped[str] = mapped_column(String(32))
     message_type: Mapped[str] = mapped_column(String(128))
     status: Mapped[str] = mapped_column(String(16))
+    outcome: Mapped[str | None] = mapped_column(String(24))
     lease_owner: Mapped[str | None] = mapped_column(String(64))
     lease_expires_at: Mapped[dt.datetime | None]
     attempts: Mapped[int] = mapped_column(Integer, server_default=text("1"))

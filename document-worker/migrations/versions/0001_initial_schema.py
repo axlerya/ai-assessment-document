@@ -329,6 +329,7 @@ CREATE TABLE processed_messages (
     pipeline_version varchar(32)  NOT NULL,
     message_type     varchar(128) NOT NULL,
     status           varchar(16)  NOT NULL,
+    outcome          varchar(24),
     lease_owner      varchar(64),
     lease_expires_at timestamptz,
     attempts         integer      NOT NULL DEFAULT 1,
@@ -351,6 +352,10 @@ CREATE TABLE processed_messages (
         status <> 'completed' OR lease_owner IS NULL),
     CONSTRAINT ck__processed_messages__completed_has_timestamp CHECK (
         status <> 'completed' OR completed_at IS NOT NULL),
+    CONSTRAINT ck__processed_messages__completed_has_outcome CHECK (
+        status <> 'completed' OR outcome IS NOT NULL),
+    CONSTRAINT ck__processed_messages__outcome CHECK (
+        outcome IS NULL OR outcome IN ('processed','partially_processed','failed')),
     CONSTRAINT ck__processed_messages__attempts CHECK (attempts >= 1),
     CONSTRAINT ck__processed_messages__completed_after_seen CHECK (
         completed_at IS NULL OR completed_at >= first_seen_at)
