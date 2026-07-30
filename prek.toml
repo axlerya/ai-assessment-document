@@ -53,14 +53,17 @@ hooks = [
 [[repos]]
 repo = "local"
 
+# mypy — на pre-push, а не на pre-commit: тест, написанный до своего модуля,
+# не типизируется по определению, и хук на коммите запрещал бы красный TDD-цикл.
 [[repos.hooks]]
 id = "mypy"
-name = "mypy --strict (document-worker)"
+name = "mypy --strict (pre-push)"
 language = "system"
 entry = "uv run --directory document-worker mypy document_worker tests"
-files = "^document-worker/(document_worker|tests)/.*\\.py$"
 pass_filenames = false
+always_run = true
 require_serial = true
+stages = ["pre-push"]
 
 [[repos.hooks]]
 id = "import-linter"

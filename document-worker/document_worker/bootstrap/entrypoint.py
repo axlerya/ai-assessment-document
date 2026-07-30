@@ -1,4 +1,4 @@
-"""Точка входа сервиса для `[project.scripts]` (ADR-0008)."""
+"""Точка входа сервиса для `[project.scripts]`."""
 
 from __future__ import annotations
 
@@ -6,9 +6,9 @@ import uvicorn
 
 from document_worker.bootstrap.app import create_app
 
-# Значения станут полями AppSettings, когда появится слой конфигурации.
-HTTP_HOST = "0.0.0.0"  # noqa: S104 — слушать все интерфейсы внутри контейнера норма
-HTTP_PORT = 8080  # ADR-0008: единственный порт сервиса
+# Станут полями AppSettings, когда появится слой конфигурации.
+HTTP_HOST = "0.0.0.0"  # noqa: S104 — в контейнере слушаем все интерфейсы
+HTTP_PORT = 8080
 
 
 def run() -> None:

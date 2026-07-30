@@ -1,10 +1,6 @@
-"""Проверка формата сообщения коммита по правилам корневого AGENTS.md.
+"""Хук commit-msg: тема коммита должна быть вида `тип: описание`.
 
-Допустимый формат темы коммита: ``тип: описание``, где тип — ``feature``, ``fix``
-или ``docs``. Служебные сообщения git (``Merge ...``, ``Revert ...``) пропускаются:
-их текст формирует сам git, и переписывать его нечем.
-
-Скрипт вызывается хуком ``commit-msg``:
+Служебные сообщения git (Merge, Revert) пропускаются — их текст формирует сам git.
 
     python scripts/check_commit_message.py .git/COMMIT_EDITMSG
 """
@@ -38,14 +34,7 @@ def _fail(message: str) -> int:
 
 
 def _extract_subject(raw_message: str) -> str | None:
-    """Возвращает тему коммита — первую значимую строку сообщения.
-
-    Args:
-        raw_message: Полный текст сообщения коммита из файла git.
-
-    Returns:
-        Тема коммита или ``None``, если значимых строк нет.
-    """
+    """Первая строка сообщения, не пустая и не комментарий git."""
     for line in raw_message.splitlines():
         stripped = line.strip()
         if stripped and not stripped.startswith("#"):
@@ -54,14 +43,7 @@ def _extract_subject(raw_message: str) -> str | None:
 
 
 def main(argv: list[str]) -> int:
-    """Проверяет формат сообщения коммита.
-
-    Args:
-        argv: Аргументы командной строки без имени скрипта.
-
-    Returns:
-        Код возврата процесса: 0 — формат корректен, 1 — нет.
-    """
+    """Возвращает 0, если формат темы корректен, иначе 1."""
     if len(argv) != 1:
         return _fail(USAGE_ERROR)
 
