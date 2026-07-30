@@ -146,17 +146,18 @@ async def test_mark_completed_stores_the_outcome(session: AsyncSession) -> None:
 
 
 async def test_release_keeps_message_in_progress(session: AsyncSession) -> None:
-    # Работа не завершена, терять её нельзя: следующая доставка получит RESUME
-    # немедленно, а не через таймаут лиза.
+    # Работа не завершена, терять её нельзя: запись остаётся незавершённой,
+    # а лиз просрочивается, чтобы следующая доставка продолжила немедленно.
     repository = SqlAlchemyProcessedMessageRepository(session)
     claim = _claim()
     await repository.try_claim(claim)
+    released_at = NOW + timedelta(minutes=1)
 
-    await repository.release(claim.event_id, at=NOW + timedelta(minutes=1))
+    await repository.release(claim.event_id, at=released_at)
 
     stored = await _row(session, claim)
     assert stored["status"] == "in_progress"
-    assert stored["lease_owner"] is None
+    assert stored["lease_expires_at"] == released_at
 
 
 async def test_released_message_is_claimable_again(session: AsyncSession) -> None:
@@ -165,7 +166,18 @@ async def test_released_message_is_claimable_again(session: AsyncSession) -> Non
     await repository.try_claim(claim)
     await repository.release(claim.event_id, at=NOW + timedelta(minutes=1))
 
-    outcome = await repository.try_claim(claim)
+    outcome = await repository.try_claim(
+        MessageClaimDTO(
+            event_id=claim.event_id,
+            document_id=claim.document_id,
+            correlation_id=claim.correlation_id,
+            pipeline_version=claim.pipeline_version,
+            message_type=claim.message_type,
+            lease_owner="worker-2",
+            lease_expires_at=NOW + LEASE * 2,
+            claimed_at=NOW + timedelta(minutes=2),
+        )
+    )
 
     assert outcome.outcome is ClaimOutcome.RESUME
 
@@ -223,7 +235,8 @@ async def _raw_insert(session: AsyncSession, claim: MessageClaimDTO) -> None:
 async def _row(session: AsyncSession, claim: MessageClaimDTO) -> dict[str, object]:
     result = await session.execute(
         text(
-            "SELECT status, outcome, lease_owner, attempts FROM processed_messages"
+            "SELECT status, outcome, lease_owner, lease_expires_at, attempts"
+            " FROM processed_messages"
             " WHERE event_id = :event_id"
         ),
         {"event_id": claim.event_id.value},
