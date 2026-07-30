@@ -16,6 +16,11 @@ MAX_PAGES: Final[int] = 300
 MAX_FILE_SIZE_BYTES: Final[int] = 104_857_600
 SUPPORTED_MIME_TYPES: Final[frozenset[str]] = frozenset({"application/pdf"})
 
+CONFIDENCE_PRECISION: Final[int] = 4
+# Выше этого порога фрагмент нельзя звать неразборчивым.
+MAX_ILLEGIBLE_CONFIDENCE: Final[float] = 0.75
+MAX_PAGE_TEXT_LENGTH: Final[int] = 1_000_000
+
 MIN_BUCKET_NAME_LENGTH: Final[int] = 3
 MAX_BUCKET_NAME_LENGTH: Final[int] = 63
 MAX_OBJECT_KEY_LENGTH: Final[int] = 1024

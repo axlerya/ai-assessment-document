@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import pytest
 
-from document_worker.domain.constants import MAX_ILLEGIBLE_CONFIDENCE
+from document_worker.domain.constants import (
+    MAX_ILLEGIBLE_CONFIDENCE,
+    MAX_PAGE_TEXT_LENGTH,
+)
 from document_worker.domain.errors import (
     InvalidIllegibleSpan,
     InvalidRecognizedWord,
@@ -36,6 +39,11 @@ def test_text_span_rejects_start_greater_than_end() -> None:
 def test_text_span_rejects_negative_start() -> None:
     with pytest.raises(InvalidTextSpan):
         TextSpan(-1, 5)
+
+
+def test_text_span_beyond_page_limit_raises() -> None:
+    with pytest.raises(InvalidTextSpan):
+        TextSpan(0, MAX_PAGE_TEXT_LENGTH + 1)
 
 
 def test_text_span_allows_zero_length_span() -> None:
@@ -189,6 +197,19 @@ def test_technical_reason_rejects_non_empty_span(reason: IllegibleReason) -> Non
             confidence=OcrConfidence.ZERO,
             reason=reason,
             raw_text="абв",
+        )
+
+
+@pytest.mark.parametrize("reason", TECHNICAL_REASONS)
+def test_technical_reason_rejects_span_of_non_zero_length(
+    reason: IllegibleReason,
+) -> None:
+    with pytest.raises(InvalidIllegibleSpan):
+        IllegibleSpan(
+            span=TextSpan(0, 3),
+            confidence=OcrConfidence.ZERO,
+            reason=reason,
+            raw_text="",
         )
 
 
