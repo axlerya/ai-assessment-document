@@ -97,8 +97,6 @@ class TextLayerQualityPolicy:
     weight_word_length: float = 0.10
 
     ideal_word_length: float = 7.5
-    perfect_score: float = 1.0
-    zero_score: float = 0.0
 
     def score_weights(self) -> dict[str, float]:
         """Веса компонентов оценки качества слоя."""
@@ -116,7 +114,7 @@ class TextLayerQualityPolicy:
             return TextLayerVerdict(
                 page_number=probe.page_number,
                 decision=ExtractionMethod.TEXT_LAYER,
-                score=self.perfect_score,
+                score=1.0,
                 hard_reject=False,
                 reasons=(REASON_CLEAN_SPARSE_PAGE,),
             )
@@ -236,29 +234,29 @@ class TextLayerQualityPolicy:
         )
 
     def _density(self, probe: TextLayerProbe) -> float:
-        return min(self.perfect_score, probe.char_count / self.dense_page_chars)
+        return min(1.0, probe.char_count / self.dense_page_chars)
 
     def _dictionary(self, probe: TextLayerProbe) -> float:
-        ratio = probe.dictionary_word_ratio or self.zero_score
-        return min(self.perfect_score, ratio / self.good_dictionary_ratio)
+        ratio = probe.dictionary_word_ratio or 0.0
+        return min(1.0, ratio / self.good_dictionary_ratio)
 
     def _decodable(self, probe: TextLayerProbe) -> float:
         share = (
             probe.ratio_of(probe.undecodable_char_count) / self.max_undecodable_ratio
         )
-        return self.perfect_score - min(self.perfect_score, share)
+        return 1.0 - min(1.0, share)
 
     def _encoding(self, probe: TextLayerProbe) -> float:
         share = (
             probe.ratio_of(probe.replacement_char_count) / self.max_replacement_ratio
         )
-        return self.perfect_score - min(self.perfect_score, share)
+        return 1.0 - min(1.0, share)
 
     def _word_length(self, probe: TextLayerProbe) -> float:
         deviation = abs(probe.mean_word_length - self.ideal_word_length)
         return max(
-            self.zero_score,
-            self.perfect_score - deviation / self.ideal_word_length,
+            0.0,
+            1.0 - deviation / self.ideal_word_length,
         )
 
 
