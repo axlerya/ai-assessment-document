@@ -14,6 +14,7 @@ from document_worker.application.dto.results import (
     MessageClaimDTO,
     MessageOutcome,
 )
+from document_worker.application.errors import PermanentError
 from document_worker.domain.value_objects.identifiers import EventId
 from document_worker.infrastructure.persistence.repositories.processed_messages import (
     SqlAlchemyProcessedMessageRepository,
@@ -26,6 +27,8 @@ from tests.factories import (
 )
 
 if TYPE_CHECKING:
+    from datetime import datetime
+
     from sqlalchemy.ext.asyncio import AsyncSession
 
 pytestmark = pytest.mark.integration
@@ -38,8 +41,8 @@ def _claim(
     *,
     event_id: EventId | None = None,
     owner: str = "worker-1",
-    at: object = NOW,
-    lease_until: object = None,
+    at: datetime = NOW,
+    lease_until: datetime | None = None,
 ) -> MessageClaimDTO:
     document = make_document()
     return MessageClaimDTO(
@@ -49,8 +52,8 @@ def _claim(
         pipeline_version=PIPELINE_VERSION,
         message_type=MESSAGE_TYPE,
         lease_owner=owner,
-        lease_expires_at=lease_until or (NOW + LEASE),  # type: ignore[operator]
-        claimed_at=at,  # type: ignore[arg-type]
+        lease_expires_at=lease_until or (NOW + LEASE),
+        claimed_at=at,
     )
 
 
@@ -203,13 +206,15 @@ async def test_duplicate_insert_inside_savepoint_keeps_transaction_usable(
 async def test_duplicate_insert_without_savepoint_aborts_transaction(
     session: AsyncSession,
 ) -> None:
+    # Контрольный негатив: без точки отката транзакция после конфликта мертва,
+    # и следующий запрос падает уже на ней самой.
     repository = SqlAlchemyProcessedMessageRepository(session)
     claim = _claim()
     await repository.try_claim(claim)
     with pytest.raises(DBAPIError):
         await _raw_insert(session, claim)
 
-    with pytest.raises(DBAPIError):
+    with pytest.raises(PermanentError):
         await repository.try_claim(_claim())
 
 

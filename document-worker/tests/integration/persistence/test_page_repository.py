@@ -175,6 +175,21 @@ async def test_load_pages_returns_pages_in_page_number_order(
     assert [int(page.number) for page in pages] == [1, 2]
 
 
+async def test_load_pages_of_empty_document_returns_nothing(
+    session: AsyncSession,
+) -> None:
+    document = await _document(session)
+    repository = SqlAlchemyDocumentPageRepository(session)
+
+    pages = await repository.load_pages(
+        document.id,
+        PIPELINE_VERSION,
+        statuses=frozenset({PageStatus.EXTRACTED}),
+    )
+
+    assert pages == ()
+
+
 async def test_count_counts_only_pages_of_this_version(
     session: AsyncSession,
 ) -> None:

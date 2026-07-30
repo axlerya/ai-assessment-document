@@ -61,28 +61,6 @@ def document_to_values(document: Document) -> dict[str, object]:
     }
 
 
-def apply_document_to_row(document: Document, row: DocumentRow) -> None:
-    """Переносит в строку только те колонки, которыми владеет воркер.
-
-    Строку создаёт сервис приёма файлов, поэтому заявленные значения и
-    метаданные источника здесь не трогаются.
-    """
-    source = document.source
-    row.detected_mime_type = source.mime_type.value
-    row.size_bytes = int(source.size)
-    row.checksum = source.checksum.value if source.checksum else None
-    row.page_count = document.page_count
-    row.status = document.status.value
-    row.pipeline_version = _version_of(document)
-    row.correlation_id = str(document.correlation_id)
-    row.failure_code = document.failure_code
-    row.failure_stage = document.failure_stage.value if document.failure_stage else None
-    row.failure_message = document.failure_message
-    row.updated_at = document.updated_at
-    row.processing_started_at = document.processing_started_at
-    row.processing_finished_at = document.processed_at
-
-
 def document_to_domain(row: DocumentRow) -> Document:
     """Восстанавливает документ из строки.
 

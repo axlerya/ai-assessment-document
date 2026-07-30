@@ -17,12 +17,14 @@ from document_worker.infrastructure.persistence.models.message import (
     ProcessedMessageRow,
 )
 from document_worker.infrastructure.persistence.models.page import DocumentPageRow
+from document_worker.infrastructure.persistence.repositories.base import (
+    SqlAlchemyRepository,
+)
 
 if TYPE_CHECKING:
     from datetime import datetime
 
     from sqlalchemy import Executable
-    from sqlalchemy.ext.asyncio import AsyncSession
 
     from document_worker.application.dto.results import (
         MessageClaimDTO,
@@ -34,12 +36,8 @@ IN_PROGRESS = "in_progress"
 COMPLETED = "completed"
 
 
-class SqlAlchemyProcessedMessageRepository:
+class SqlAlchemyProcessedMessageRepository(SqlAlchemyRepository):
     """Claim сообщения с лизом и его завершение."""
-
-    def __init__(self, session: AsyncSession) -> None:
-        """Работает в транзакции переданной сессии."""
-        self._session = session
 
     async def try_claim(self, claim: MessageClaimDTO) -> ClaimOutcomeDTO:
         """Пытается занять сообщение и сообщает, что делать дальше."""
@@ -74,7 +72,7 @@ class SqlAlchemyProcessedMessageRepository:
             literal_column("xmax = 0").label("inserted"),
             ProcessedMessageRow.attempts,
         )
-        claimed = (await self._session.execute(statement)).one_or_none()
+        claimed = (await self._execute(statement)).one_or_none()
         if claimed is None:
             return await self._rejected(claim)
         if claimed.inserted:
@@ -105,7 +103,7 @@ class SqlAlchemyProcessedMessageRepository:
                 updated_at=completed_at,
             )
         )
-        await self._session.execute(statement)
+        await self._execute(statement)
 
     async def release(self, event_id: EventId, *, at: datetime) -> None:
         """Просрочивает лиз, оставляя запись незавершённой.
@@ -122,13 +120,13 @@ class SqlAlchemyProcessedMessageRepository:
             )
             .values(lease_expires_at=at, updated_at=at)
         )
-        await self._session.execute(statement)
+        await self._execute(statement)
 
     async def _rejected(self, claim: MessageClaimDTO) -> ClaimOutcomeDTO:
         statement = select(
             ProcessedMessageRow.status, ProcessedMessageRow.attempts
         ).where(ProcessedMessageRow.event_id == claim.event_id.value)
-        row = (await self._session.execute(statement)).one()
+        row = (await self._execute(statement)).one()
         outcome = (
             ClaimOutcome.SKIP
             if row.status == COMPLETED
@@ -141,4 +139,4 @@ class SqlAlchemyProcessedMessageRepository:
             DocumentPageRow.document_id == claim.document_id.value,
             DocumentPageRow.pipeline_version == str(claim.pipeline_version),
         )
-        return frozenset((await self._session.execute(statement)).scalars().all())
+        return frozenset((await self._execute(statement)).scalars().all())

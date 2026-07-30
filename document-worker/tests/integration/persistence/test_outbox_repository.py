@@ -20,6 +20,8 @@ if TYPE_CHECKING:
 
     from sqlalchemy.ext.asyncio import AsyncSession
 
+    from document_worker.application.dto.results import OutboxRecordDTO
+
 pytestmark = pytest.mark.integration
 
 LEASE_SECONDS = 30
@@ -189,6 +191,17 @@ async def test_rescheduled_event_is_fetched_again_after_its_time(
     assert len(records) == 1
 
 
+async def test_mark_published_of_nothing_touches_nothing(
+    session: AsyncSession,
+) -> None:
+    repository = SqlAlchemyOutboxRepository(session)
+    await repository.enqueue([_event()])
+
+    await repository.mark_published([], published_at=NOW)
+
+    assert len(await _fetch(repository)) == 1
+
+
 async def test_oldest_pending_age_is_none_without_backlog(
     session: AsyncSession,
 ) -> None:
@@ -216,7 +229,7 @@ async def _fetch(
     limit: int = 10,
     now: datetime = NOW,
     owner: str = "relay-1",
-) -> tuple[object, ...]:
+) -> tuple[OutboxRecordDTO, ...]:
     return await repository.fetch_pending(
         limit=limit, now=now, lease_owner=owner, lease_seconds=LEASE_SECONDS
     )

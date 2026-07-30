@@ -188,3 +188,14 @@ def test_zero_length_span_is_rejected_for_every_content_reason(
             reason=reason,
             raw_text="",
         )
+
+
+def test_illegible_span_rejects_line_number_below_one() -> None:
+    with pytest.raises(InvalidIllegibleSpan):
+        IllegibleSpan(
+            span=TextSpan(0, 3),
+            confidence=OcrConfidence(0.3),
+            reason=IllegibleReason.LOW_OCR_CONFIDENCE,
+            raw_text="абв",
+            line_number=0,
+        )

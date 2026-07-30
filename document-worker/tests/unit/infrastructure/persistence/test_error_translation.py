@@ -124,3 +124,14 @@ def test_translated_error_carries_sqlstate_in_context() -> None:
     translated = translate_db_error(_error("40001"))
 
     assert translated.context["sqlstate"] == "40001"
+
+
+def test_constraint_name_is_absent_when_the_driver_does_not_report_it() -> None:
+    error = DBAPIError("INSERT", None, Exception("нет имени"))
+    error.connection_invalidated = False
+    error.orig.sqlstate = "23505"  # type: ignore[union-attr]
+
+    translated = translate_db_error(error)
+
+    assert isinstance(translated, DuplicateRecordError)
+    assert translated.constraint is None

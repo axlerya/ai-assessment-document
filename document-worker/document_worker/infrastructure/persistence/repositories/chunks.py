@@ -10,11 +10,12 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from document_worker.application.errors import ChunkPersistenceMismatchError
 from document_worker.infrastructure.persistence.mappers.chunk import chunk_to_values
 from document_worker.infrastructure.persistence.models.chunk import DocumentChunkRow
+from document_worker.infrastructure.persistence.repositories.base import (
+    SqlAlchemyRepository,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
-
-    from sqlalchemy.ext.asyncio import AsyncSession
 
     from document_worker.domain.entities.document_chunk import DocumentChunk
     from document_worker.domain.value_objects.identifiers import DocumentId
@@ -23,12 +24,8 @@ if TYPE_CHECKING:
 CHUNK_CONSTRAINT = "uq__document_chunks__page__start"
 
 
-class SqlAlchemyDocumentChunkRepository:
+class SqlAlchemyDocumentChunkRepository(SqlAlchemyRepository):
     """Чанки: весь документ одной вставкой, со сверкой числа записанных строк."""
-
-    def __init__(self, session: AsyncSession) -> None:
-        """Работает в транзакции переданной сессии."""
-        self._session = session
 
     async def add_all(self, chunks: Sequence[DocumentChunk]) -> int:
         """Пишет все чанки документа одной вставкой и возвращает число строк.
@@ -48,7 +45,7 @@ class SqlAlchemyDocumentChunkRepository:
             .on_conflict_do_nothing(constraint=CHUNK_CONSTRAINT)
             .returning(DocumentChunkRow.id)
         )
-        inserted = (await self._session.execute(statement)).scalars().all()
+        inserted = (await self._execute(statement)).scalars().all()
         if len(inserted) != len(prepared):
             await self._require_skipped_rows_are_identical(prepared, set(inserted))
         return len(inserted)
@@ -63,7 +60,7 @@ class SqlAlchemyDocumentChunkRepository:
             DocumentChunkRow.document_id == document_id.value,
             DocumentChunkRow.chunking_version == str(chunking_version),
         )
-        return int((await self._session.execute(statement)).scalar_one())
+        return int((await self._execute(statement)).scalar_one())
 
     async def _require_skipped_rows_are_identical(
         self,
@@ -82,7 +79,7 @@ class SqlAlchemyDocumentChunkRepository:
         )
         stored = {
             (row.page_id, row.start_offset): row.content_hash
-            for row in await self._session.execute(statement)
+            for row in await self._execute(statement)
         }
         for values in skipped:
             key = (values["page_id"], values["start_offset"])

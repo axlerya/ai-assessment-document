@@ -21,10 +21,12 @@ from document_worker.infrastructure.persistence.models.page import (
     DocumentPageRow,
     IllegibleSpanRow,
 )
+from document_worker.infrastructure.persistence.repositories.base import (
+    SqlAlchemyRepository,
+)
 
 if TYPE_CHECKING:
     from sqlalchemy import ColumnElement
-    from sqlalchemy.ext.asyncio import AsyncSession
 
     from document_worker.domain.entities.document_page import DocumentPage
     from document_worker.domain.value_objects.identifiers import DocumentId
@@ -34,12 +36,8 @@ PAGE_CONSTRAINT = "uq__document_pages__document__version__number"
 SPAN_CONSTRAINT = "uq__illegible_spans__page__index"
 
 
-class SqlAlchemyDocumentPageRepository:
+class SqlAlchemyDocumentPageRepository(SqlAlchemyRepository):
     """Страницы: идемпотентная вставка вместе с диапазонами и чтение."""
-
-    def __init__(self, session: AsyncSession) -> None:
-        """Работает в транзакции переданной сессии."""
-        self._session = session
 
     async def add(self, page: DocumentPage) -> bool:
         """Пишет страницу вместе с её неразборчивыми диапазонами.
@@ -53,13 +51,13 @@ class SqlAlchemyDocumentPageRepository:
             .on_conflict_do_nothing(constraint=PAGE_CONSTRAINT)
             .returning(DocumentPageRow.id)
         )
-        inserted = (await self._session.execute(statement)).scalar_one_or_none()
+        inserted = (await self._execute(statement)).scalar_one_or_none()
         if inserted is None:
             return False
 
         spans = page_spans_to_values(page)
         if spans:
-            await self._session.execute(
+            await self._execute(
                 pg_insert(IllegibleSpanRow)
                 .values(spans)
                 .on_conflict_do_nothing(constraint=SPAN_CONSTRAINT)
@@ -75,7 +73,7 @@ class SqlAlchemyDocumentPageRepository:
         statement = select(DocumentPageRow.page_number).where(
             self._scope(document_id, pipeline_version)
         )
-        return frozenset((await self._session.execute(statement)).scalars().all())
+        return frozenset((await self._execute(statement)).scalars().all())
 
     async def list_summaries(
         self,
@@ -113,7 +111,7 @@ class SqlAlchemyDocumentPageRepository:
                 char_count=row.text_length,
                 illegible_char_count=int(row.illegible_chars),
             )
-            for row in await self._session.execute(statement)
+            for row in await self._execute(statement)
         )
 
     async def load_pages(
@@ -132,7 +130,7 @@ class SqlAlchemyDocumentPageRepository:
             )
             .order_by(DocumentPageRow.page_number)
         )
-        rows = (await self._session.execute(statement)).scalars().all()
+        rows = (await self._execute(statement)).scalars().all()
         spans = await self._spans_of([row.id for row in rows])
         return tuple(page_to_domain(row, spans.get(row.id, ())) for row in rows)
 
@@ -145,7 +143,7 @@ class SqlAlchemyDocumentPageRepository:
         statement = select(func.count()).where(
             self._scope(document_id, pipeline_version)
         )
-        return int((await self._session.execute(statement)).scalar_one())
+        return int((await self._execute(statement)).scalar_one())
 
     async def _spans_of(
         self,
@@ -159,7 +157,7 @@ class SqlAlchemyDocumentPageRepository:
             .order_by(IllegibleSpanRow.page_id, IllegibleSpanRow.span_index)
         )
         grouped: dict[object, list[IllegibleSpanRow]] = {}
-        for span in (await self._session.execute(statement)).scalars():
+        for span in (await self._execute(statement)).scalars():
             grouped.setdefault(span.page_id, []).append(span)
         return {page_id: tuple(spans) for page_id, spans in grouped.items()}
 

@@ -377,3 +377,36 @@ def test_created_at_must_be_timezone_aware() -> None:
             created_at=datetime(2026, 7, 30, 12, 0),  # noqa: DTZ001
             updated_at=CREATED_AT,
         )
+
+
+def test_start_processing_without_any_version_raises() -> None:
+    # Версию выбирает воркер, а строку создаёт сервис приёма файлов, который её
+    # не знает: без явной версии обрабатывать нечем.
+    document = _unversioned()
+
+    with pytest.raises(InvariantViolation):
+        document.start_processing(now=STARTED_AT)
+
+
+def test_event_of_document_without_version_is_impossible() -> None:
+    document = _unversioned()
+
+    with pytest.raises(InvariantViolation):
+        document.fail(
+            code="corrupted_document",
+            message="файл не читается",
+            stage=ProcessingStage.VALIDATION,
+            now=STARTED_AT,
+        )
+
+
+def _unversioned() -> Document:
+    return Document(
+        id=DOCUMENT_ID,
+        source=SOURCE,
+        status=DocumentStatus.PENDING,
+        pipeline_version=None,
+        correlation_id=CORRELATION_ID,
+        created_at=CREATED_AT,
+        updated_at=CREATED_AT,
+    )

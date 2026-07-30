@@ -45,24 +45,6 @@ def job_to_values(job: ProcessingJob) -> dict[str, object]:
     }
 
 
-def apply_job_to_row(job: ProcessingJob, row: ProcessingJobRow) -> None:
-    """Переносит в существующую строку изменяемые колонки прогона."""
-    row.status = job.status.value
-    row.attempt = job.attempt
-    row.pages_total = job.pages_total
-    row.pages_text_layer = job.pages_text_layer
-    row.pages_ocr = job.pages_ocr
-    row.pages_hybrid = job.pages_hybrid
-    row.pages_failed = job.pages_failed
-    row.chunks_created = job.chunks_created
-    row.failure_code = job.error_code
-    row.failure_stage = job.stage.value if job.stage else None
-    row.failure_message = job.error_message
-    row.started_at = job.started_at
-    row.finished_at = job.finished_at
-    row.updated_at = job.finished_at or job.started_at or job.scheduled_at
-
-
 def job_to_domain(row: ProcessingJobRow) -> ProcessingJob:
     """Восстанавливает прогон из строки.
 

@@ -11,23 +11,20 @@ from document_worker.infrastructure.persistence.mappers.document import (
     document_to_domain,
 )
 from document_worker.infrastructure.persistence.models.document import DocumentRow
+from document_worker.infrastructure.persistence.repositories.base import (
+    SqlAlchemyRepository,
+)
 
 if TYPE_CHECKING:
     from datetime import datetime
-
-    from sqlalchemy.ext.asyncio import AsyncSession
 
     from document_worker.domain.entities.document import Document
     from document_worker.domain.value_objects.identifiers import DocumentId
     from document_worker.domain.value_objects.versioning import PipelineVersion
 
 
-class SqlAlchemyDocumentRepository:
+class SqlAlchemyDocumentRepository(SqlAlchemyRepository):
     """Документ: чтение, захват строки и переходы под guard'ом по статусу."""
-
-    def __init__(self, session: AsyncSession) -> None:
-        """Работает в транзакции переданной сессии."""
-        self._session = session
 
     async def get(self, document_id: DocumentId) -> Document | None:
         """Читает документ без блокировки."""
@@ -45,7 +42,7 @@ class SqlAlchemyDocumentRepository:
             .where(DocumentRow.id == document_id.value)
             .with_for_update()
         )
-        row = (await self._session.execute(statement)).scalar_one_or_none()
+        row = (await self._execute(statement)).scalar_one_or_none()
         return None if row is None else document_to_domain(row)
 
     async def start_processing(
@@ -75,7 +72,7 @@ class SqlAlchemyDocumentRepository:
             )
             .returning(DocumentRow.id)
         )
-        result = await self._session.execute(statement)
+        result = await self._execute(statement)
         return result.scalar_one_or_none() is not None
 
     async def finish(self, document: Document, *, expected: DocumentStatus) -> bool:
@@ -111,5 +108,5 @@ class SqlAlchemyDocumentRepository:
             )
             .returning(DocumentRow.id)
         )
-        result = await self._session.execute(statement)
+        result = await self._execute(statement)
         return result.scalar_one_or_none() is not None

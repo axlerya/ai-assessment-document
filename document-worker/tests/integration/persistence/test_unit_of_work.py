@@ -19,6 +19,7 @@ from document_worker.application.dto.results import MessageClaimDTO, OutboxEvent
 from document_worker.application.errors import DuplicateRecordError
 from document_worker.application.ports.unit_of_work import UnitOfWork
 from document_worker.domain.value_objects.identifiers import EventId
+from document_worker.domain.value_objects.paging import PageNumber
 from document_worker.infrastructure.persistence.mappers.document import document_to_row
 from document_worker.infrastructure.persistence.unit_of_work import (
     NestedUnitOfWorkError,
@@ -106,7 +107,7 @@ async def _adds_page_twice(
     """Вторая страница с тем же id конфликтует по первичному ключу."""
     async with SqlAlchemyUnitOfWork(session_factory) as uow:
         await uow.pages.add(page)
-        await uow.pages.add(replace(page, number=2))
+        await uow.pages.add(replace(page, number=PageNumber(2)))
 
 
 async def _seed_document(session: AsyncSession, document: Document) -> None:
@@ -119,10 +120,13 @@ async def _count(session: AsyncSession, table: str) -> int:
     return int(result.scalar_one())
 
 
-def test_unit_of_work_satisfies_its_port(
+async def test_unit_of_work_satisfies_its_port(
     session_factory: async_sessionmaker[AsyncSession],
 ) -> None:
-    assert isinstance(SqlAlchemyUnitOfWork(session_factory), UnitOfWork)
+    # Репозитории появляются вместе с транзакцией: до входа в блок их нет,
+    # потому что нет и сессии, поверх которой они работают.
+    async with SqlAlchemyUnitOfWork(session_factory) as uow:
+        assert isinstance(uow, UnitOfWork)  # type: ignore[unreachable]
 
 
 async def test_commit_persists_page_and_outbox_atomically(
@@ -233,7 +237,7 @@ async def test_savepoint_keeps_transaction_usable_after_conflict(
         await uow.pages.add(page)
         with pytest.raises(DuplicateRecordError):
             async with uow.savepoint():
-                await uow.pages.add(replace(page, number=2))
+                await uow.pages.add(replace(page, number=PageNumber(2)))
         await uow.outbox.enqueue([_event(document)])
         await uow.commit()
 

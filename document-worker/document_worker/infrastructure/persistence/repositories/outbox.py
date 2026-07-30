@@ -15,25 +15,22 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from document_worker.application.dto.results import OutboxRecordDTO
 from document_worker.infrastructure.persistence.models.outbox import OutboxEventRow
+from document_worker.infrastructure.persistence.repositories.base import (
+    SqlAlchemyRepository,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
     from datetime import datetime
     from uuid import UUID
 
-    from sqlalchemy.ext.asyncio import AsyncSession
-
     from document_worker.application.dto.results import OutboxEventDTO
 
 EVENT_CONSTRAINT = "uq__outbox_events__event_id"
 
 
-class SqlAlchemyOutboxRepository:
+class SqlAlchemyOutboxRepository(SqlAlchemyRepository):
     """Outbox: запись событий и их выдача relay под лизом."""
-
-    def __init__(self, session: AsyncSession) -> None:
-        """Работает в транзакции переданной сессии."""
-        self._session = session
 
     async def enqueue(self, events: Sequence[OutboxEventDTO]) -> int:
         """Кладёт события; повтор гасится уникальностью идентификатора."""
@@ -45,7 +42,7 @@ class SqlAlchemyOutboxRepository:
             .on_conflict_do_nothing(constraint=EVENT_CONSTRAINT)
             .returning(OutboxEventRow.id)
         )
-        return len((await self._session.execute(statement)).scalars().all())
+        return len((await self._execute(statement)).scalars().all())
 
     async def fetch_pending(
         self,
@@ -96,7 +93,7 @@ class SqlAlchemyOutboxRepository:
                 occurred_at=row.occurred_at,
                 attempts=row.attempts,
             )
-            for row in await self._session.execute(statement)
+            for row in await self._execute(statement)
         )
 
     async def mark_published(
@@ -118,7 +115,7 @@ class SqlAlchemyOutboxRepository:
                 last_error=None,
             )
         )
-        await self._session.execute(statement)
+        await self._execute(statement)
 
     async def reschedule(
         self,
@@ -139,14 +136,14 @@ class SqlAlchemyOutboxRepository:
                 lease_expires_at=None,
             )
         )
-        await self._session.execute(statement)
+        await self._execute(statement)
 
     async def oldest_pending_age_s(self, *, now: datetime) -> float | None:
         """Возраст самого старого неопубликованного события."""
         statement = select(func.min(OutboxEventRow.occurred_at)).where(
             OutboxEventRow.published_at.is_(None)
         )
-        oldest = (await self._session.execute(statement)).scalar_one_or_none()
+        oldest = (await self._execute(statement)).scalar_one_or_none()
         return None if oldest is None else (now - oldest).total_seconds()
 
 

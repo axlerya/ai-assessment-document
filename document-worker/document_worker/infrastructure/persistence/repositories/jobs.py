@@ -12,10 +12,11 @@ from document_worker.infrastructure.persistence.mappers.job import (
     job_to_values,
 )
 from document_worker.infrastructure.persistence.models.job import ProcessingJobRow
+from document_worker.infrastructure.persistence.repositories.base import (
+    SqlAlchemyRepository,
+)
 
 if TYPE_CHECKING:
-    from sqlalchemy.ext.asyncio import AsyncSession
-
     from document_worker.application.dto.results import JobProgressDTO
     from document_worker.domain.entities.processing_job import ProcessingJob
     from document_worker.domain.value_objects.enums import JobStatus
@@ -25,12 +26,8 @@ if TYPE_CHECKING:
 JOB_CONSTRAINT = "uq__processing_jobs__document__version"
 
 
-class SqlAlchemyProcessingJobRepository:
+class SqlAlchemyProcessingJobRepository(SqlAlchemyRepository):
     """Прогоны: заведение с гашением дубля, прогресс и терминальный переход."""
-
-    def __init__(self, session: AsyncSession) -> None:
-        """Работает в транзакции переданной сессии."""
-        self._session = session
 
     async def get(
         self,
@@ -53,7 +50,7 @@ class SqlAlchemyProcessingJobRepository:
             .on_conflict_do_nothing(constraint=JOB_CONSTRAINT)
             .returning(ProcessingJobRow.id)
         )
-        if (await self._session.execute(statement)).scalar_one_or_none() is not None:
+        if (await self._execute(statement)).scalar_one_or_none() is not None:
             return job
 
         existing = await self.get(job.document_id, job.pipeline_version)
@@ -76,7 +73,7 @@ class SqlAlchemyProcessingJobRepository:
                 updated_at=progress.heartbeat_at,
             )
         )
-        await self._session.execute(statement)
+        await self._execute(statement)
 
     async def finish(self, job: ProcessingJob, *, expected: JobStatus) -> bool:
         """Фиксирует терминальный статус прогона под guard'ом."""
@@ -103,7 +100,7 @@ class SqlAlchemyProcessingJobRepository:
             )
             .returning(ProcessingJobRow.id)
         )
-        result = await self._session.execute(statement)
+        result = await self._execute(statement)
         return result.scalar_one_or_none() is not None
 
     async def _row_of(
@@ -115,4 +112,4 @@ class SqlAlchemyProcessingJobRepository:
             ProcessingJobRow.document_id == document_id.value,
             ProcessingJobRow.pipeline_version == str(pipeline_version),
         )
-        return (await self._session.execute(statement)).scalar_one_or_none()
+        return (await self._execute(statement)).scalar_one_or_none()
