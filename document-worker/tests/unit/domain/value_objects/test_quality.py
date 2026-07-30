@@ -208,10 +208,11 @@ def test_failed_verdict_allows_problem_pages() -> None:
         status=DocumentStatus.FAILED,
         stats=stats,
         reasons=("страница не прочитана",),
-        problem_pages=(PageNumber(1),),
+        failed_pages=(PageNumber(1),),
     )
 
     assert verdict.status is DocumentStatus.FAILED
+    assert verdict.problem_pages == (PageNumber(1),)
 
 
 def test_mean_confidence_ignores_text_layer_pages() -> None:
@@ -289,7 +290,6 @@ def test_document_status_verdict_requires_terminal_status() -> None:
             status=DocumentStatus.PROCESSING,
             stats=stats,
             reasons=(),
-            problem_pages=(),
         )
 
 
@@ -301,7 +301,6 @@ def test_partially_processed_verdict_requires_problem_pages() -> None:
             status=DocumentStatus.PARTIALLY_PROCESSED,
             stats=stats,
             reasons=("одна страница не прочитана",),
-            problem_pages=(),
         )
 
 
@@ -313,5 +312,5 @@ def test_processed_verdict_forbids_problem_pages() -> None:
             status=DocumentStatus.PROCESSED,
             stats=stats,
             reasons=(),
-            problem_pages=(PageNumber(1),),
+            failed_pages=(PageNumber(1),),
         )

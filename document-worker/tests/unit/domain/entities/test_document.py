@@ -99,7 +99,6 @@ def _success_verdict(pages: int = 2) -> DocumentStatusVerdict:
         status=DocumentStatus.PROCESSED,
         stats=_stats(*outcomes),
         reasons=(),
-        problem_pages=(),
     )
 
 
@@ -112,7 +111,7 @@ def _partial_verdict() -> DocumentStatusVerdict:
         status=DocumentStatus.PARTIALLY_PROCESSED,
         stats=_stats(*outcomes),
         reasons=("страница 2 не прочитана",),
-        problem_pages=(PageNumber(2),),
+        failed_pages=(PageNumber(2),),
     )
 
 
@@ -241,6 +240,18 @@ def test_complete_carries_processing_duration() -> None:
     event = document.pull_events()[0]
     assert isinstance(event, DocumentProcessed)
     assert event.processing_duration_ms == 4000
+
+
+def test_duration_is_zero_when_start_time_is_unknown() -> None:
+    # Документ, восстановленный из БД без отметки старта.
+    document = _document(DocumentStatus.PROCESSING)
+    document.declare_page_count(2)
+
+    document.complete(_success_verdict(), chunks_total=4, now=FINISHED_AT)
+
+    event = document.pull_events()[0]
+    assert isinstance(event, DocumentProcessed)
+    assert event.processing_duration_ms == 0
 
 
 def test_complete_requires_declared_page_count() -> None:

@@ -187,12 +187,31 @@ class DocumentQualityStats:
 
 @dataclass(frozen=True, slots=True)
 class DocumentStatusVerdict:
-    """Решение о терминальном статусе документа."""
+    """Решение о терминальном статусе документа.
+
+    Проблемные страницы перечислены по категориям, а не одним списком: событие
+    о частичной обработке требует именно такого разбиения.
+    """
 
     status: DocumentStatus
     stats: DocumentQualityStats
-    reasons: tuple[str, ...]
-    problem_pages: tuple[PageNumber, ...]
+    reasons: tuple[str, ...] = ()
+    partially_illegible_pages: tuple[PageNumber, ...] = ()
+    illegible_pages: tuple[PageNumber, ...] = ()
+    failed_pages: tuple[PageNumber, ...] = ()
+
+    @property
+    def problem_pages(self) -> tuple[PageNumber, ...]:
+        """Все страницы, из-за которых документ не полностью обработан."""
+        return tuple(
+            sorted(
+                {
+                    *self.partially_illegible_pages,
+                    *self.illegible_pages,
+                    *self.failed_pages,
+                }
+            )
+        )
 
     def __post_init__(self) -> None:
         """Сверяет статус со списком проблемных страниц."""
