@@ -14,14 +14,14 @@ from document_worker.domain.constants import MAX_RENDER_DPI, MIN_RENDER_DPI
 from document_worker.domain.errors import InvariantViolation
 from document_worker.domain.markers import MarkedText
 from document_worker.domain.value_objects.enums import ExtractionMethod, PageStatus
-from document_worker.domain.value_objects.quality import PageOutcome
+from document_worker.domain.value_objects.quality import PageFailure, PageOutcome
 from document_worker.domain.value_objects.recognized_text import RecognizedText
 
 if TYPE_CHECKING:
     from datetime import datetime
 
     from document_worker.domain.value_objects.confidence import OcrConfidence
-    from document_worker.domain.value_objects.enums import IllegibleReason
+    from document_worker.domain.value_objects.enums import PageFailureReason
     from document_worker.domain.value_objects.identifiers import DocumentId, PageId
     from document_worker.domain.value_objects.paging import PageNumber
     from document_worker.domain.value_objects.quality import PageLegibilityVerdict
@@ -43,6 +43,7 @@ class DocumentPage:
     created_at: datetime
     image_ref: ObjectRef | None = None
     render_dpi: int | None = None
+    failure: PageFailure | None = None
     warnings: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
@@ -63,13 +64,26 @@ class DocumentPage:
                 "отсутствие способа и статус failed это одно и то же состояние",
                 context={"method": self.text.method.value, "status": self.status.value},
             )
-        if (self.status is PageStatus.EXTRACTED) != (not self.text.illegible_spans):
+        # Ровно три допустимых сочетания статуса и числа диапазонов; у нечитаемой
+        # страницы помечать нечего, её причина живёт в поле failure.
+        spans = len(self.text.illegible_spans)
+        allowed = (
+            (self.status is PageStatus.EXTRACTED and spans == 0)
+            or (
+                self.status in (PageStatus.PARTIALLY_ILLEGIBLE, PageStatus.ILLEGIBLE)
+                and spans >= 1
+            )
+            or (self.status is PageStatus.FAILED and spans == 0)
+        )
+        if not allowed:
             raise InvariantViolation(
-                "читаемость страницы противоречит списку неразборчивых фрагментов",
-                context={
-                    "status": self.status.value,
-                    "spans": len(self.text.illegible_spans),
-                },
+                "статус страницы противоречит списку неразборчивых фрагментов",
+                context={"status": self.status.value, "spans": spans},
+            )
+        if (self.status is PageStatus.FAILED) != (self.failure is not None):
+            raise InvariantViolation(
+                "отказ страницы описывается собственными полями, и только он",
+                context={"status": self.status.value},
             )
         if self.text.method.is_ocr_based:
             self._validate_render()
@@ -156,9 +170,10 @@ class DocumentPage:
         document_id: DocumentId,
         number: PageNumber,
         pipeline_version: PipelineVersion,
-        reason: IllegibleReason,
+        reason: PageFailureReason,
         message: str,
         now: datetime,
+        recoverable: bool = False,
     ) -> Self:
         """Страница, которую не удалось прочитать по технической причине."""
         return cls(
@@ -167,12 +182,11 @@ class DocumentPage:
             number=number,
             pipeline_version=pipeline_version,
             status=PageStatus.FAILED,
-            text=RecognizedText.nothing_recognized(
-                method=ExtractionMethod.NONE,
-                reason=reason,
-            ),
+            text=RecognizedText.not_extracted(),
             created_at=now,
-            warnings=(message,),
+            failure=PageFailure(
+                reason=reason, message=message, recoverable=recoverable
+            ),
         )
 
     @property

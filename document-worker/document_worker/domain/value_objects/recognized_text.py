@@ -117,16 +117,15 @@ class RecognizedText:
         Raises:
             InvariantViolation: Для текстового слоя такой ситуации не бывает.
         """
-        if method is ExtractionMethod.TEXT_LAYER:
+        if method in _METHODS_WITHOUT_CONFIDENCE:
             raise InvariantViolation(
-                "текстовый слой не может ничего не распознать",
+                f"способ {method.value} не может ничего не распознать",
                 context={"method": method.value},
             )
-        confidence = None if method is ExtractionMethod.NONE else OcrConfidence.ZERO
         return cls(
             content="",
             method=method,
-            confidence=confidence,
+            confidence=OcrConfidence.ZERO,
             illegible_spans=(
                 IllegibleSpan(
                     span=TextSpan(0, 0),
@@ -136,6 +135,11 @@ class RecognizedText:
                 ),
             ),
         )
+
+    @classmethod
+    def not_extracted(cls) -> Self:
+        """Страница, которую не удалось прочитать: диапазонов нет, помечать нечего."""
+        return cls(content="", method=ExtractionMethod.NONE, confidence=None)
 
     @property
     def has_illegible(self) -> bool:

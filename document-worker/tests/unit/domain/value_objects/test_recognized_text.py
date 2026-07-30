@@ -166,20 +166,21 @@ def test_allows_zero_length_span_for_no_text_recognized() -> None:
     assert text.illegible_spans[0].span.is_empty
 
 
-def test_nothing_recognized_for_failed_page_has_no_confidence() -> None:
-    text = RecognizedText.nothing_recognized(
-        method=ExtractionMethod.NONE,
-        reason=IllegibleReason.OCR_FAILED,
-    )
+def test_not_extracted_page_has_no_confidence_and_no_spans() -> None:
+    text = RecognizedText.not_extracted()
 
     assert text.method is ExtractionMethod.NONE
     assert text.confidence is None
+    assert text.illegible_spans == ()
 
 
-def test_nothing_recognized_rejects_text_layer() -> None:
+@pytest.mark.parametrize("method", [ExtractionMethod.TEXT_LAYER, ExtractionMethod.NONE])
+def test_nothing_recognized_rejects_methods_without_confidence(
+    method: ExtractionMethod,
+) -> None:
     with pytest.raises(InvariantViolation):
         RecognizedText.nothing_recognized(
-            method=ExtractionMethod.TEXT_LAYER,
+            method=method,
             reason=IllegibleReason.NO_TEXT_RECOGNIZED,
         )
 

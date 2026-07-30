@@ -69,6 +69,16 @@ class PageStatus(StrEnum):
         return self is PageStatus.EXTRACTED
 
 
+class PageFailureReason(StrEnum):
+    """Техническая причина, по которой страница не прочитана."""
+
+    RENDER_FAILED = "render_failed"
+    OCR_FAILED = "ocr_failed"
+    TEXT_EXTRACTION_FAILED = "text_extraction_failed"
+    PAGE_CORRUPTED = "page_corrupted"
+    TIMEOUT = "timeout"
+
+
 class ExtractionMethod(StrEnum):
     """Способ, которым получен текст страницы. Синонима `mixed` нет."""
 
