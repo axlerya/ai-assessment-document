@@ -107,6 +107,16 @@ def test_document_not_found_is_transient_with_retry_delay() -> None:
     assert error.retry_after_s == 5.0
 
 
+def test_error_exposes_message_and_dict_form() -> None:
+    error = DocumentNotFoundError("документа ещё нет", context={"document_id": "d-1"})
+
+    payload = error.to_dict()
+
+    assert error.message == "документа ещё нет"
+    assert payload["code"] == "document_not_found"
+    assert payload["context"] == {"document_id": "d-1"}
+
+
 def test_page_level_error_carries_page_number() -> None:
     error = PageLevelError("страница не прочитана", page_number=14)
 

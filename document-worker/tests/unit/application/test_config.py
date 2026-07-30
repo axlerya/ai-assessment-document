@@ -68,6 +68,11 @@ def test_processing_requires_positive_document_timeout() -> None:
         _processing(document_timeout_s=0.0)
 
 
+def test_processing_rejects_empty_consumer_name() -> None:
+    with pytest.raises(InvariantViolation):
+        _processing(consumer_name="")
+
+
 def test_processing_config_is_frozen() -> None:
     config = _processing()
 
