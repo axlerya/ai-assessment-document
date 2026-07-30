@@ -88,6 +88,13 @@ class ExtractionMethod(StrEnum):
         return self is not ExtractionMethod.NONE
 
 
+class CompletionOutcome(StrEnum):
+    """Итог терминального перехода. Дубль это не ошибка, а штатный повтор."""
+
+    APPLIED = "applied"
+    DUPLICATE = "duplicate"
+
+
 class JobStatus(StrEnum):
     """Статус прогона обработки документа."""
 
