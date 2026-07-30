@@ -12,7 +12,7 @@ dependencies = [
 ]
 
 [project.scripts]
-document-worker = "document_worker.bootstrap.entrypoint:run"   # ADR-0008
+document-worker = "document_worker.bootstrap.entrypoint:run"
 
 [build-system]
 requires = ["hatchling>=1.27"]
@@ -41,18 +41,18 @@ typing = ["mypy>=2.3.0"]
 
 [tool.ruff]
 target-version = "py312"
-line-length = 88                       # ADR-0009
+line-length = 88
 src = [".", "tests"]
 extend-exclude = ["migrations/versions"]
 
 [tool.ruff.lint]
 select = ["ALL"]
-# D203/D213 — взаимоисключающие docstring-правила; COM812/ISC001 конфликтуют с ruff-format;
-# TD*/FIX002 — TODO без issue; EM*/TRY003 — длинные сообщения доменных ошибок читабельнее;
-# RUF001-003 — кириллица в строках, комментариях и docstring;
-# CPY001 — заголовок с копирайтом в каждом файле пет-проекту не нужен
+# D203/D213 и COM812/ISC001 конфликтуют между собой и с ruff-format;
+# RUF001-003 — кириллица в строках и комментариях;
+# N818 — доменные ошибки именуются языком домена, суффикс Error несёт DomainError
 ignore = ["D203", "D213", "COM812", "ISC001", "TD002", "TD003", "FIX002",
-          "EM101", "EM102", "TRY003", "ANN401", "RUF001", "RUF002", "RUF003", "CPY001"]
+          "EM101", "EM102", "TRY003", "ANN401", "RUF001", "RUF002", "RUF003",
+          "CPY001", "N818"]
 flake8-tidy-imports.ban-relative-imports = "all"
 pydocstyle.convention = "google"
 mccabe.max-complexity = 8
@@ -107,8 +107,8 @@ warn_required_dynamic_aliases = true
 
 [tool.importlinter]
 root_package = "document_worker"
-include_external_packages = true       # без этого контракты 2–5 молча ничего не проверяют
-exclude_type_checking_imports = false  # обход границы через `if TYPE_CHECKING` — тоже нарушение
+include_external_packages = true       # без этого forbidden-контракты ничего не проверяют
+exclude_type_checking_imports = false  # обход границы через TYPE_CHECKING — тоже нарушение
 
 [[tool.importlinter.contracts]]
 id = "layers"
@@ -154,7 +154,7 @@ forbidden_modules = [
 allow_indirect_imports = false
 
 [[tool.importlinter.contracts]]
-id = "no-agpl"                                        # ADR-0013
+id = "no-agpl"
 name = "Запрет AGPL-зависимостей (PyMuPDF)"
 type = "forbidden"
 source_modules = ["document_worker"]
@@ -162,7 +162,7 @@ forbidden_modules = ["fitz", "pymupdf"]
 allow_indirect_imports = false
 
 [[tool.importlinter.contracts]]
-id = "di-isolation"                                   # ADR-0008
+id = "di-isolation"
 name = "DI-контейнер виден только в bootstrap"
 type = "forbidden"
 source_modules = [
@@ -206,7 +206,7 @@ filterwarnings = ["error"]
 source = ["document_worker"]
 branch = true
 parallel = true
-concurrency = ["thread"]   # "greenlet" добавляется вместе с sqlalchemy[asyncio] на этапе 8
+concurrency = ["thread"]   # greenlet добавится вместе с sqlalchemy[asyncio]
 omit = ["*/migrations/*", "*/__main__.py"]
 
 [tool.coverage.report]
@@ -225,4 +225,4 @@ exclude_also = [
 known_first_party = ["document_worker"]
 
 [tool.deptry.per_rule_ignores]
-DEP002 = ["uvicorn"]   # нужен рантайму, импортируется только в entrypoint через uvicorn.run
+DEP002 = ["uvicorn"]   # нужен рантайму, в коде только uvicorn.run
