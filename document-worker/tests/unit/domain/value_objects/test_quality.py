@@ -161,6 +161,59 @@ def test_stats_reject_counters_that_do_not_sum_to_total() -> None:
         )
 
 
+def test_page_outcome_rejects_negative_char_count() -> None:
+    with pytest.raises(InvariantViolation):
+        _outcome(1, PageStatus.EXTRACTED, ExtractionMethod.TEXT_LAYER, chars=-1)
+
+
+def test_stats_reject_status_counters_that_do_not_sum_to_total() -> None:
+    with pytest.raises(InvariantViolation):
+        DocumentQualityStats(
+            pages_total=2,
+            pages_text_layer=2,
+            pages_ocr=0,
+            pages_hybrid=0,
+            pages_failed=0,
+            pages_extracted=1,
+            pages_partially_illegible=0,
+            pages_illegible=0,
+            pages_failed_status=0,
+            total_chars=200,
+            illegible_chars=0,
+            mean_ocr_confidence=None,
+        )
+
+
+def test_illegible_char_ratio_is_share_of_all_chars() -> None:
+    outcomes = [
+        _outcome(
+            1,
+            PageStatus.PARTIALLY_ILLEGIBLE,
+            ExtractionMethod.OCR,
+            confidence=0.5,
+            chars=100,
+            illegible_chars=25,
+        ),
+    ]
+
+    stats = DocumentQualityStats.from_outcomes(outcomes)
+
+    assert stats.illegible_char_ratio == pytest.approx(0.25)
+
+
+def test_failed_verdict_allows_problem_pages() -> None:
+    stats = DocumentQualityStats.from_outcomes([_failed(1)])
+
+    verdict = DocumentStatusVerdict(
+        status=DocumentStatus.FAILED,
+        stats=stats,
+        reasons=("страница не прочитана",),
+        problem_pages=(PageNumber(1),),
+    )
+
+    assert verdict.status is DocumentStatus.FAILED
+
+
 def test_mean_confidence_ignores_text_layer_pages() -> None:
     outcomes = [_text_layer(1), _ocr(2, confidence=0.6)]
 
