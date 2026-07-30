@@ -74,13 +74,16 @@ files = "^document-worker/(document_worker/.*\\.py|pyproject\\.toml)$"
 pass_filenames = false
 require_serial = true
 
+# deptry, как и mypy, проверяет свойство всего проекта: в середине красного
+# цикла зависимость уже объявлена, а импортируется только следующим коммитом.
 [[repos.hooks]]
 id = "deptry"
-name = "deptry: неиспользуемые и необъявленные зависимости"
+name = "deptry: неиспользуемые и необъявленные зависимости (pre-push)"
 language = "system"
-entry = "uv run --directory document-worker deptry document_worker"
-files = "^document-worker/(document_worker/.*\\.py|pyproject\\.toml)$"
+entry = "uv run --directory document-worker deptry ."
 pass_filenames = false
+always_run = true
+stages = ["pre-push"]
 
 [[repos.hooks]]
 id = "uv-lock-check"
