@@ -12,7 +12,11 @@ import pytest_asyncio
 from alembic import command
 from alembic.config import Config
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import create_async_engine
+from sqlalchemy.ext.asyncio import (
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 from testcontainers.community.postgres import PostgresContainer
 
 if TYPE_CHECKING:
@@ -105,3 +109,28 @@ async def connection(migrated_engine: AsyncEngine) -> AsyncIterator[AsyncConnect
             yield active
         finally:
             await transaction.rollback()
+
+
+@pytest.fixture
+def session_factory(connection: AsyncConnection) -> async_sessionmaker[AsyncSession]:
+    """Фабрика сессий поверх откатываемой транзакции теста.
+
+    `create_savepoint` обязателен: без него `commit()` в коде под тестом
+    зафиксировал бы внешнюю транзакцию и утёк бы в следующий тест.
+    """
+    return async_sessionmaker(
+        bind=connection,
+        class_=AsyncSession,
+        expire_on_commit=False,
+        autoflush=False,
+        join_transaction_mode="create_savepoint",
+    )
+
+
+@pytest_asyncio.fixture(loop_scope="session")
+async def session(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> AsyncIterator[AsyncSession]:
+    """Сессия для тестов, которым нужны ORM-модели, а не голый SQL."""
+    async with session_factory() as active:
+        yield active
