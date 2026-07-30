@@ -129,16 +129,17 @@ class DocumentPartiallyProcessed(_PageCounters):
 
     @override
     def __post_init__(self) -> None:
-        """Требует хотя бы одну проблемную страницу."""
+        """Требует хотя бы одну проблемную страницу или причину."""
         _validate_occurred_at(self.occurred_at)
         _validate_counters(self)
         if not (
             self.partially_illegible_page_numbers
             or self.illegible_page_numbers
             or self.failed_page_numbers
+            or self.reasons
         ):
             raise InvariantViolation(
-                "частичная обработка без проблемных страниц бессмысленна",
+                "частичная обработка без единой причины бессмысленна",
                 context={"pages_total": self.pages_total},
             )
 
