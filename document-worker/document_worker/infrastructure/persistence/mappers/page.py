@@ -43,48 +43,58 @@ def span_id(page_id: PageId, index: int) -> uuid.UUID:
 
 def page_to_row(page: DocumentPage) -> DocumentPageRow:
     """Собирает строку страницы без её диапазонов."""
+    return DocumentPageRow(**page_to_values(page))
+
+
+def page_to_values(page: DocumentPage) -> dict[str, object]:
+    """Значения колонок страницы."""
     failure = page.failure
-    return DocumentPageRow(
-        id=page.id.value,
-        document_id=page.document_id.value,
-        pipeline_version=str(page.pipeline_version),
-        page_number=int(page.number),
-        status=page.status.value,
-        extraction_method=page.method.value,
-        text=page.text.content,
-        text_length=page.text.char_count,
-        ocr_confidence=_decimal(page.confidence),
-        illegible_span_count=len(page.illegible_spans),
-        image_bucket=page.image_ref.bucket if page.image_ref else None,
-        image_key=page.image_ref.key if page.image_ref else None,
-        render_dpi=page.render_dpi,
-        warnings=list(page.warnings),
-        failure_reason=failure.reason.value if failure else None,
-        failure_message=failure.message if failure else None,
-        failure_recoverable=failure.recoverable if failure else None,
-        created_at=page.created_at,
-    )
+    return {
+        "id": page.id.value,
+        "document_id": page.document_id.value,
+        "pipeline_version": str(page.pipeline_version),
+        "page_number": int(page.number),
+        "status": page.status.value,
+        "extraction_method": page.method.value,
+        "text": page.text.content,
+        "text_length": page.text.char_count,
+        "ocr_confidence": _decimal(page.confidence),
+        "illegible_span_count": len(page.illegible_spans),
+        "image_bucket": page.image_ref.bucket if page.image_ref else None,
+        "image_key": page.image_ref.key if page.image_ref else None,
+        "render_dpi": page.render_dpi,
+        "warnings": list(page.warnings),
+        "failure_reason": failure.reason.value if failure else None,
+        "failure_message": failure.message if failure else None,
+        "failure_recoverable": failure.recoverable if failure else None,
+        "created_at": page.created_at,
+    }
 
 
 def page_spans_to_rows(page: DocumentPage) -> list[IllegibleSpanRow]:
     """Собирает строки неразборчивых диапазонов страницы."""
+    return [IllegibleSpanRow(**values) for values in page_spans_to_values(page)]
+
+
+def page_spans_to_values(page: DocumentPage) -> list[dict[str, object]]:
+    """Значения колонок неразборчивых диапазонов страницы."""
     return [
-        IllegibleSpanRow(
-            id=span_id(page.id, index),
-            page_id=page.id.value,
-            span_index=index,
-            start_offset=span.span.start,
-            end_offset=span.span.end,
-            reason=span.reason.value,
-            confidence=Decimal(str(span.confidence.value)),
-            raw_text=span.raw_text,
-            line_number=span.line_number,
-            bbox_x0=span.bbox.x0 if span.bbox else None,
-            bbox_y0=span.bbox.y0 if span.bbox else None,
-            bbox_x1=span.bbox.x1 if span.bbox else None,
-            bbox_y1=span.bbox.y1 if span.bbox else None,
-            created_at=page.created_at,
-        )
+        {
+            "id": span_id(page.id, index),
+            "page_id": page.id.value,
+            "span_index": index,
+            "start_offset": span.span.start,
+            "end_offset": span.span.end,
+            "reason": span.reason.value,
+            "confidence": Decimal(str(span.confidence.value)),
+            "raw_text": span.raw_text,
+            "line_number": span.line_number,
+            "bbox_x0": span.bbox.x0 if span.bbox else None,
+            "bbox_y0": span.bbox.y0 if span.bbox else None,
+            "bbox_x1": span.bbox.x1 if span.bbox else None,
+            "bbox_y1": span.bbox.y1 if span.bbox else None,
+            "created_at": page.created_at,
+        }
         for index, span in enumerate(page.illegible_spans)
     ]
 

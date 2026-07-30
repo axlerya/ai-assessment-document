@@ -23,35 +23,42 @@ def _version_of(document: Document) -> str | None:
 
 
 def document_to_row(document: Document) -> DocumentRow:
-    """Собирает строку документа целиком.
+    """Собирает строку документа целиком."""
+    return DocumentRow(**document_to_values(document))
+
+
+def document_to_values(document: Document) -> dict[str, object]:
+    """Значения колонок документа.
 
     Заявленные продюсером значения дублируются определёнными: у домена одна
     правда о файле, и хранить в declared_* что-то другое он не может.
     """
     source = document.source
-    return DocumentRow(
-        id=document.id.value,
-        bucket=source.ref.bucket,
-        object_key=source.ref.key,
-        declared_mime_type=source.mime_type.value,
-        detected_mime_type=source.mime_type.value,
-        declared_size_bytes=int(source.size),
-        size_bytes=int(source.size),
-        checksum_algorithm=ChecksumAlgorithm.SHA256.value,
-        source_checksum=source.checksum.value if source.checksum else None,
-        checksum=source.checksum.value if source.checksum else None,
-        page_count=document.page_count,
-        status=document.status.value,
-        pipeline_version=_version_of(document),
-        correlation_id=str(document.correlation_id),
-        failure_code=document.failure_code,
-        failure_stage=document.failure_stage.value if document.failure_stage else None,
-        failure_message=document.failure_message,
-        created_at=document.created_at,
-        updated_at=document.updated_at,
-        processing_started_at=document.processing_started_at,
-        processing_finished_at=document.processed_at,
-    )
+    return {
+        "id": document.id.value,
+        "bucket": source.ref.bucket,
+        "object_key": source.ref.key,
+        "declared_mime_type": source.mime_type.value,
+        "detected_mime_type": source.mime_type.value,
+        "declared_size_bytes": int(source.size),
+        "size_bytes": int(source.size),
+        "checksum_algorithm": ChecksumAlgorithm.SHA256.value,
+        "source_checksum": source.checksum.value if source.checksum else None,
+        "checksum": source.checksum.value if source.checksum else None,
+        "page_count": document.page_count,
+        "status": document.status.value,
+        "pipeline_version": _version_of(document),
+        "correlation_id": str(document.correlation_id),
+        "failure_code": document.failure_code,
+        "failure_stage": document.failure_stage.value
+        if document.failure_stage
+        else None,
+        "failure_message": document.failure_message,
+        "created_at": document.created_at,
+        "updated_at": document.updated_at,
+        "processing_started_at": document.processing_started_at,
+        "processing_finished_at": document.processed_at,
+    }
 
 
 def apply_document_to_row(document: Document, row: DocumentRow) -> None:

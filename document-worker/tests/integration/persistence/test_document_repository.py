@@ -12,6 +12,7 @@ from sqlalchemy import event, text
 
 from document_worker.domain.value_objects.enums import DocumentStatus, ProcessingStage
 from document_worker.domain.value_objects.identifiers import DocumentId
+from document_worker.domain.value_objects.storage import Checksum
 from document_worker.infrastructure.persistence.mappers.document import document_to_row
 from document_worker.infrastructure.persistence.repositories.documents import (
     SqlAlchemyDocumentRepository,
@@ -134,6 +135,9 @@ async def test_finish_writes_terminal_result(session: AsyncSession) -> None:
     assert document is not None
     document.status = DocumentStatus.PROCESSED
     document.page_count = 3
+    # Контрольная сумма появляется после скачивания файла, и схема требует её
+    # у успешно обработанного документа.
+    document.source = replace(document.source, checksum=Checksum.sha256_of(b"pdf"))
     document.processed_at = LATER
     document.updated_at = LATER
 
@@ -144,6 +148,7 @@ async def test_finish_writes_terminal_result(session: AsyncSession) -> None:
     assert stored is not None
     assert stored.status is DocumentStatus.PROCESSED
     assert stored.page_count == 3
+    assert stored.source.checksum == Checksum.sha256_of(b"pdf")
 
 
 async def test_finish_with_wrong_expected_status_changes_nothing(

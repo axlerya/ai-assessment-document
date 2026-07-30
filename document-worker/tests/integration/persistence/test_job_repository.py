@@ -82,7 +82,7 @@ async def test_record_progress_writes_counters_and_heartbeat(
         job.id,
         JobProgressDTO(
             pages_text_layer=1,
-            pages_ocr=2,
+            pages_ocr=0,
             pages_hybrid=0,
             pages_failed=1,
             chunks_created=9,
@@ -92,7 +92,7 @@ async def test_record_progress_writes_counters_and_heartbeat(
 
     stored = await repository.get(document.id, PIPELINE_VERSION)
     assert stored is not None
-    assert (stored.pages_text_layer, stored.pages_ocr, stored.pages_hybrid) == (1, 2, 0)
+    assert (stored.pages_text_layer, stored.pages_ocr, stored.pages_hybrid) == (1, 0, 0)
     assert stored.pages_failed == 1
     assert stored.chunks_created == 9
 

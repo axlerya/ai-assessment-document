@@ -16,28 +16,33 @@ from document_worker.infrastructure.persistence.models.job import ProcessingJobR
 
 def job_to_row(job: ProcessingJob) -> ProcessingJobRow:
     """Собирает строку прогона."""
-    return ProcessingJobRow(
-        id=job.id.value,
-        document_id=job.document_id.value,
-        pipeline_version=str(job.pipeline_version),
-        status=job.status.value,
-        attempt=job.attempt,
-        trigger_event_id=job.event_id.value,
-        correlation_id=str(job.correlation_id),
-        pages_total=job.pages_total,
-        pages_text_layer=job.pages_text_layer,
-        pages_ocr=job.pages_ocr,
-        pages_hybrid=job.pages_hybrid,
-        pages_failed=job.pages_failed,
-        chunks_created=job.chunks_created,
-        failure_code=job.error_code,
-        failure_stage=job.stage.value if job.stage else None,
-        failure_message=job.error_message,
-        started_at=job.started_at,
-        finished_at=job.finished_at,
-        created_at=job.scheduled_at,
-        updated_at=job.finished_at or job.started_at or job.scheduled_at,
-    )
+    return ProcessingJobRow(**job_to_values(job))
+
+
+def job_to_values(job: ProcessingJob) -> dict[str, object]:
+    """Значения колонок прогона."""
+    return {
+        "id": job.id.value,
+        "document_id": job.document_id.value,
+        "pipeline_version": str(job.pipeline_version),
+        "status": job.status.value,
+        "attempt": job.attempt,
+        "trigger_event_id": job.event_id.value,
+        "correlation_id": str(job.correlation_id),
+        "pages_total": job.pages_total,
+        "pages_text_layer": job.pages_text_layer,
+        "pages_ocr": job.pages_ocr,
+        "pages_hybrid": job.pages_hybrid,
+        "pages_failed": job.pages_failed,
+        "chunks_created": job.chunks_created,
+        "failure_code": job.error_code,
+        "failure_stage": job.stage.value if job.stage else None,
+        "failure_message": job.error_message,
+        "started_at": job.started_at,
+        "finished_at": job.finished_at,
+        "created_at": job.scheduled_at,
+        "updated_at": job.finished_at or job.started_at or job.scheduled_at,
+    }
 
 
 def apply_job_to_row(job: ProcessingJob, row: ProcessingJobRow) -> None:

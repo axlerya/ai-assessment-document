@@ -26,26 +26,31 @@ from document_worker.infrastructure.persistence.models.chunk import DocumentChun
 
 def chunk_to_row(chunk: DocumentChunk, *, chunk_index: int) -> DocumentChunkRow:
     """Собирает строку чанка со сквозным номером по документу."""
-    return DocumentChunkRow(
-        id=chunk.id.value,
-        document_id=chunk.document_id.value,
-        page_id=chunk.page_id.value,
-        page_number=int(chunk.page_number),
-        chunking_version=str(chunk.chunking_version),
-        chunk_index=chunk_index,
-        start_offset=chunk.span.start,
-        end_offset=chunk.span.end,
-        text=chunk.content,
-        token_count=chunk.token_count,
-        overlap_prefix_chars=chunk.overlap_prefix_chars,
-        extraction_method=chunk.method.value,
-        avg_ocr_confidence=None
+    return DocumentChunkRow(**chunk_to_values(chunk, chunk_index=chunk_index))
+
+
+def chunk_to_values(chunk: DocumentChunk, *, chunk_index: int) -> dict[str, object]:
+    """Значения колонок чанка."""
+    return {
+        "id": chunk.id.value,
+        "document_id": chunk.document_id.value,
+        "page_id": chunk.page_id.value,
+        "page_number": int(chunk.page_number),
+        "chunking_version": str(chunk.chunking_version),
+        "chunk_index": chunk_index,
+        "start_offset": chunk.span.start,
+        "end_offset": chunk.span.end,
+        "text": chunk.content,
+        "token_count": chunk.token_count,
+        "overlap_prefix_chars": chunk.overlap_prefix_chars,
+        "extraction_method": chunk.method.value,
+        "avg_ocr_confidence": None
         if chunk.avg_confidence is None
         else Decimal(str(chunk.avg_confidence.value)),
-        illegible_span_count=chunk.illegible_span_count,
-        heading_path=list(chunk.heading_path),
-        content_hash=chunk.checksum.value,
-    )
+        "illegible_span_count": chunk.illegible_span_count,
+        "heading_path": list(chunk.heading_path),
+        "content_hash": chunk.checksum.value,
+    }
 
 
 def chunk_to_domain(row: DocumentChunkRow, *, ordinal: int) -> DocumentChunk:
