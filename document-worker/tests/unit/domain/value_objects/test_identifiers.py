@@ -49,7 +49,8 @@ def test_generate_produces_distinct_identifiers() -> None:
 def test_page_id_and_chunk_id_are_not_interchangeable() -> None:
     value = uuid.UUID("22222222-2222-5222-9222-222222222222")
 
-    assert PageId(value) != ChunkId(value)
+    # mypy тоже отвергает такое сравнение — это и есть проверяемое свойство.
+    assert PageId(value) != ChunkId(value)  # type: ignore[comparison-overlap]
 
 
 def test_event_id_deterministic_is_stable_for_same_inputs() -> None:

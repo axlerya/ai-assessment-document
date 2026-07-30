@@ -108,7 +108,8 @@ def test_versions_are_ordered() -> None:
 
 
 def test_chunking_version_is_not_equal_to_pipeline_version() -> None:
-    assert ChunkingVersion(1, 0, 0) != PipelineVersion(1, 0, 0)
+    # mypy тоже отвергает такое сравнение — это и есть проверяемое свойство.
+    assert ChunkingVersion(1, 0, 0) != PipelineVersion(1, 0, 0)  # type: ignore[comparison-overlap]
 
 
 def test_chunking_version_raises_its_own_error() -> None:
