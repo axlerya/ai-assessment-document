@@ -13,11 +13,15 @@ from document_worker.domain.value_objects.confidence import OcrConfidence
 from document_worker.domain.value_objects.enums import (
     ExtractionMethod,
     IllegibleReason,
+    PageFailureReason,
     PageStatus,
 )
 from document_worker.domain.value_objects.identifiers import DocumentId, PageId
 from document_worker.domain.value_objects.paging import PageNumber
-from document_worker.domain.value_objects.quality import PageLegibilityVerdict
+from document_worker.domain.value_objects.quality import (
+    PageFailure,
+    PageLegibilityVerdict,
+)
 from document_worker.domain.value_objects.recognized_text import RecognizedText
 from document_worker.domain.value_objects.storage import ObjectRef
 from document_worker.domain.value_objects.text import IllegibleSpan, TextSpan
@@ -120,7 +124,7 @@ def test_hybrid_page_is_supported() -> None:
 
 def test_failed_page_has_empty_text_and_none_method() -> None:
     page = DocumentPage.failed(
-        reason=IllegibleReason.OCR_FAILED,
+        reason=PageFailureReason.OCR_FAILED,
         message="движок распознавания упал",
         **_identity(),  # type: ignore[arg-type]
     )
@@ -128,7 +132,66 @@ def test_failed_page_has_empty_text_and_none_method() -> None:
     assert page.status is PageStatus.FAILED
     assert page.method is ExtractionMethod.NONE
     assert page.char_count == 0
-    assert page.warnings == ("движок распознавания упал",)
+
+
+def test_failed_page_carries_its_failure() -> None:
+    page = DocumentPage.failed(
+        reason=PageFailureReason.RENDER_FAILED,
+        message="страница не отрендерилась",
+        **_identity(),  # type: ignore[arg-type]
+    )
+
+    assert page.failure is not None
+    assert page.failure.reason is PageFailureReason.RENDER_FAILED
+    assert page.failure.message == "страница не отрендерилась"
+    assert page.failure.recoverable is False
+
+
+def test_failed_page_has_no_illegible_spans() -> None:
+    # Схема требует у нечитаемой страницы ноль диапазонов: помечать там нечего,
+    # причина отказа живёт в собственных колонках.
+    page = DocumentPage.failed(
+        reason=PageFailureReason.OCR_FAILED,
+        message="движок распознавания упал",
+        **_identity(),  # type: ignore[arg-type]
+    )
+
+    assert page.illegible_spans == ()
+
+
+def test_page_without_failure_status_cannot_carry_failure() -> None:
+    with pytest.raises(InvariantViolation):
+        DocumentPage(
+            id=PAGE_ID,
+            document_id=DOCUMENT_ID,
+            number=NUMBER,
+            pipeline_version=VERSION,
+            status=PageStatus.EXTRACTED,
+            text=RecognizedText(
+                content=CONTENT,
+                method=ExtractionMethod.TEXT_LAYER,
+                confidence=None,
+            ),
+            created_at=CREATED_AT,
+            failure=PageFailure(
+                reason=PageFailureReason.OCR_FAILED,
+                message="сбой",
+                recoverable=False,
+            ),
+        )
+
+
+def test_failed_page_requires_a_failure_record() -> None:
+    with pytest.raises(InvariantViolation):
+        DocumentPage(
+            id=PAGE_ID,
+            document_id=DOCUMENT_ID,
+            number=NUMBER,
+            pipeline_version=VERSION,
+            status=PageStatus.FAILED,
+            text=RecognizedText.not_extracted(),
+            created_at=CREATED_AT,
+        )
 
 
 def test_page_with_extracted_status_and_illegible_spans_raises() -> None:
