@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import pytest
 
@@ -23,6 +23,9 @@ from document_worker.domain.value_objects.identifiers import (
 )
 from document_worker.domain.value_objects.versioning import PipelineVersion
 
+if TYPE_CHECKING:
+    from document_worker.domain.events import DomainEvent
+
 pytestmark = pytest.mark.unit
 
 DOCUMENT_ID = DocumentId(uuid.UUID("11111111-1111-5111-9111-111111111111"))
@@ -37,19 +40,17 @@ ROUTING_KEYS = {
 }
 
 
-def _common(**overrides: Any) -> dict[str, Any]:
-    base: dict[str, Any] = {
-        "document_id": DOCUMENT_ID,
-        "correlation_id": CORRELATION_ID,
-        "pipeline_version": PIPELINE_VERSION,
-        "occurred_at": OCCURRED_AT,
-    }
-    base.update(overrides)
-    return base
+COMMON: dict[str, Any] = {
+    "document_id": DOCUMENT_ID,
+    "correlation_id": CORRELATION_ID,
+    "pipeline_version": PIPELINE_VERSION,
+    "occurred_at": OCCURRED_AT,
+}
 
 
 def _processed(**overrides: Any) -> DocumentProcessed:
     fields: dict[str, Any] = {
+        **COMMON,
         "pages_total": 4,
         "pages_text_layer": 2,
         "pages_ocr": 1,
@@ -62,11 +63,12 @@ def _processed(**overrides: Any) -> DocumentProcessed:
         "processing_duration_ms": 1500,
     }
     fields.update(overrides)
-    return DocumentProcessed(**_common(), **fields)
+    return DocumentProcessed(**fields)
 
 
 def _partially(**overrides: Any) -> DocumentPartiallyProcessed:
     fields: dict[str, Any] = {
+        **COMMON,
         "pages_total": 4,
         "pages_text_layer": 2,
         "pages_ocr": 1,
@@ -84,22 +86,25 @@ def _partially(**overrides: Any) -> DocumentPartiallyProcessed:
         "reasons": ("одна страница не прочитана",),
     }
     fields.update(overrides)
-    return DocumentPartiallyProcessed(**_common(), **fields)
+    return DocumentPartiallyProcessed(**fields)
 
 
 def _failed(**overrides: Any) -> DocumentProcessingFailed:
     fields: dict[str, Any] = {
+        **COMMON,
         "error_code": "corrupted_document",
         "error_message": "не удалось открыть PDF",
         "stage": ProcessingStage.INSPECTION,
         "attempt": 1,
     }
     fields.update(overrides)
-    return DocumentProcessingFailed(**_common(), **fields)
+    return DocumentProcessingFailed(**fields)
 
 
 @pytest.mark.parametrize(("event_type", "routing_key"), ROUTING_KEYS.items())
-def test_routing_keys_match_contract(event_type: type, routing_key: str) -> None:
+def test_routing_keys_match_contract(
+    event_type: type[DomainEvent], routing_key: str
+) -> None:
     assert event_type.event_type == routing_key
 
 
@@ -166,15 +171,18 @@ def test_partially_processed_event_requires_non_empty_problem_pages() -> None:
 def test_partially_processed_accepts_any_kind_of_problem_page(
     problem_pages: dict[str, tuple[int, ...]],
 ) -> None:
+    no_problem_pages: dict[str, tuple[int, ...]] = {
+        "partially_illegible_page_numbers": (),
+        "illegible_page_numbers": (),
+        "failed_page_numbers": (),
+    }
+
     event = _partially(
         pages_text_layer=3,
         pages_ocr=1,
         pages_hybrid=0,
         pages_failed=0,
-        partially_illegible_page_numbers=(),
-        illegible_page_numbers=(),
-        failed_page_numbers=(),
-        **problem_pages,
+        **{**no_problem_pages, **problem_pages},
     )
 
     assert event.event_type == "document.partially_processed"
