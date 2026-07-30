@@ -13,6 +13,7 @@ __pycache__/
 .pytest_cache/
 .coverage
 .coverage.*
+.reports/
 .mypy_cache/
 *.egg-info/
 build/
