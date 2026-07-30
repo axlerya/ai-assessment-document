@@ -9,6 +9,9 @@ authors = [{ name = "Александр Рябов", email = "alexander.ryabov.0
 dependencies = [
     "faststream[rabbit]>=0.7.3,<0.8",
     "uvicorn>=0.42,<0.43",
+    "sqlalchemy[asyncio]>=2.0.51,<2.1",
+    "asyncpg>=0.31.0,<0.32",
+    "alembic>=1.18.5,<2",
 ]
 
 [project.scripts]
@@ -36,9 +39,10 @@ test = [
     "pytest-timeout>=2.4.0",
     "coverage[toml]>=7.15.2",
     "hypothesis>=6.145",
+    "testcontainers[postgres]>=4.15.0",
 ]
 lint = ["ruff>=0.16.0", "import-linter>=2.13", "deptry>=0.25.1", "pip-audit>=2.10.1"]
-typing = ["mypy>=2.3.0"]
+typing = ["mypy>=2.3.0", "asyncpg-stubs>=0.31.3"]
 
 [tool.ruff]
 target-version = "py312"
@@ -193,7 +197,10 @@ addopts = [
     "--cov-report=xml:.reports/coverage.xml",
 ]
 asyncio_mode = "auto"
-asyncio_default_fixture_loop_scope = "function"
+# Контейнер поднимается один раз на прогон, поэтому фикстуры и тесты обязаны
+# жить в одном цикле событий.
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
 markers = [
     "unit: чистые тесты без внешних зависимостей",
     "integration: требуют testcontainers (postgres/rabbitmq/minio)",
@@ -207,7 +214,7 @@ filterwarnings = ["error"]
 source = ["document_worker"]
 branch = true
 parallel = true
-concurrency = ["thread"]   # greenlet добавится вместе с sqlalchemy[asyncio]
+concurrency = ["thread", "greenlet"]
 omit = ["*/migrations/*", "*/__main__.py"]
 
 [tool.coverage.report]
@@ -226,4 +233,4 @@ exclude_also = [
 known_first_party = ["document_worker"]
 
 [tool.deptry.per_rule_ignores]
-DEP002 = ["uvicorn"]   # нужен рантайму, в коде только uvicorn.run
+DEP002 = ["uvicorn", "asyncpg"]   # нужны рантайму, в коде не импортируются
