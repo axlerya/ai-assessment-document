@@ -164,6 +164,10 @@ def test_file_size_rejects_negative(value: int) -> None:
         FileSize(value)
 
 
+def test_file_size_int_returns_byte_count() -> None:
+    assert int(FileSize(1024)) == 1024
+
+
 def test_file_size_ensure_within_raises_document_too_large() -> None:
     with pytest.raises(DocumentTooLarge):
         FileSize(MAX_FILE_SIZE_BYTES + 1).ensure_within(MAX_FILE_SIZE_BYTES)
@@ -202,6 +206,18 @@ def test_source_file_verify_raises_on_mismatch() -> None:
 
     with pytest.raises(ChecksumMismatch):
         source.verify(Checksum(ChecksumAlgorithm.SHA256, "b" * 64))
+
+
+def test_source_file_verify_accepts_matching_checksum() -> None:
+    payload = b"%PDF-1.7 fake"
+    source = SourceFile(
+        ref=ObjectRef(bucket="documents", key="source.pdf"),
+        mime_type=MimeType("application/pdf"),
+        size=FileSize(len(payload)),
+        checksum=Checksum.sha256_of(payload),
+    )
+
+    source.verify(Checksum.sha256_of(payload))
 
 
 def test_source_file_without_declared_checksum_skips_verification() -> None:
