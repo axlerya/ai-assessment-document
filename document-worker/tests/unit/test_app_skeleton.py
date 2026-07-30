@@ -12,6 +12,8 @@ from document_worker.bootstrap import entrypoint
 from document_worker.bootstrap.app import LIVENESS_PATH, create_app
 
 if TYPE_CHECKING:
+    from collections.abc import MutableMapping
+
     from faststream.asgi.types import ASGIApp
 
 pytestmark = pytest.mark.unit
@@ -43,12 +45,12 @@ async def _call_asgi(app: ASGIApp, path: str) -> tuple[int, bytes]:
         "client": ("127.0.0.1", 51234),
         "server": ("127.0.0.1", 8080),
     }
-    sent: list[dict[str, Any]] = []
+    sent: list[MutableMapping[str, Any]] = []
 
-    async def receive() -> dict[str, Any]:
+    async def receive() -> MutableMapping[str, Any]:
         return {"type": "http.request", "body": b"", "more_body": False}
 
-    async def send(message: dict[str, Any]) -> None:
+    async def send(message: MutableMapping[str, Any]) -> None:
         sent.append(message)
 
     await app(scope, receive, send)

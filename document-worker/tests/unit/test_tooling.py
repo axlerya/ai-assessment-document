@@ -1,4 +1,4 @@
-"""Тесты инструментальной обвязки: prek-хуки, import-linter, формат сообщения коммита."""
+"""Тесты обвязки: prek-хуки, import-linter и формат сообщения коммита."""
 
 from __future__ import annotations
 
@@ -112,10 +112,12 @@ def test_import_linter_contracts_pass() -> None:
         "fix: починил авторизацию на сайте",
         "docs: обновил правила для коммитов",
         "Merge branch 'main' into feature/document-worker-skeleton",
-        "Revert \"feature: добавил каркас слоёв\"",
+        'Revert "feature: добавил каркас слоёв"',
     ],
 )
-def test_commit_message_check_accepts_valid_message(tmp_path: Path, message: str) -> None:
+def test_commit_message_check_accepts_valid_message(
+    tmp_path: Path, message: str
+) -> None:
     result = _run_commit_message_check(tmp_path, f"{message}\n")
     assert result.returncode == 0, result.stderr
 

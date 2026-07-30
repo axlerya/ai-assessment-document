@@ -16,7 +16,13 @@ pytestmark = pytest.mark.unit
 
 SERVICE_ROOT = Path(__file__).resolve().parents[2]
 PACKAGE_ROOT = SERVICE_ROOT / "src" / "document_worker"
-LAYER_PACKAGES = ("domain", "application", "infrastructure", "presentation", "bootstrap")
+LAYER_PACKAGES = (
+    "domain",
+    "application",
+    "infrastructure",
+    "presentation",
+    "bootstrap",
+)
 
 
 def _iter_imported_modules(module_path: Path) -> Iterator[str]:
@@ -68,4 +74,6 @@ def test_domain_package_has_no_third_party_imports() -> None:
             elif top_level not in sys.stdlib_module_names:
                 offenders.append(f"{relative}: {imported}")
 
-    assert not offenders, "domain обязан зависеть только от stdlib: " + ", ".join(offenders)
+    assert not offenders, "domain обязан зависеть только от stdlib: " + ", ".join(
+        offenders
+    )
