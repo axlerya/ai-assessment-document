@@ -21,6 +21,8 @@ from document_worker.infrastructure.storage.s3_object_storage import (
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Iterator
 
+    from minio import Minio
+
 SOURCE_BUCKET = "documents"
 
 
@@ -47,11 +49,24 @@ def s3_config(minio_container: MinioContainer) -> S3Config:
 
 
 @pytest.fixture(scope="session")
-def source_bucket(minio_container: MinioContainer) -> str:
-    """Бакет с исходными документами."""
+def minio_client(minio_container: MinioContainer) -> Iterator[Minio]:
+    """Один клиент на прогон.
+
+    `get_client()` делает нового на каждый вызов, и его пул соединений потом
+    закрывает сборщик мусора — с предупреждением, которое падает как ошибка.
+    """
     client = minio_container.get_client()
-    if not client.bucket_exists(SOURCE_BUCKET):
-        client.make_bucket(SOURCE_BUCKET)
+    try:
+        yield client
+    finally:
+        client._http.clear()
+
+
+@pytest.fixture(scope="session")
+def source_bucket(minio_client: Minio) -> str:
+    """Бакет с исходными документами."""
+    if not minio_client.bucket_exists(SOURCE_BUCKET):
+        minio_client.make_bucket(SOURCE_BUCKET)
     return SOURCE_BUCKET
 
 

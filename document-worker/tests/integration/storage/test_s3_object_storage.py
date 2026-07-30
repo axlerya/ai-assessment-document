@@ -26,7 +26,7 @@ from document_worker.infrastructure.storage.s3_object_storage import S3ObjectSto
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from testcontainers.community.minio import MinioContainer
+    from minio import Minio
 
     from document_worker.infrastructure.storage.s3_object_storage import S3Config
 
@@ -38,14 +38,14 @@ MAX_BYTES = 10 * 1024 * 1024
 
 
 def _put(
-    container: MinioContainer,
+    client: Minio,
     bucket: str,
     key: str,
     payload: bytes,
     *,
     content_type: str = "application/pdf",
 ) -> None:
-    container.get_client().put_object(
+    client.put_object(
         bucket,
         key,
         io.BytesIO(payload),
@@ -60,12 +60,12 @@ def test_adapter_satisfies_its_port(storage: S3ObjectStorage) -> None:
 
 async def test_download_writes_file_and_returns_checksum(
     storage: S3ObjectStorage,
-    minio_container: MinioContainer,
+    minio_client: Minio,
     source_bucket: str,
     object_key: str,
     tmp_path: Path,
 ) -> None:
-    _put(minio_container, source_bucket, object_key, CONTENT)
+    _put(minio_client, source_bucket, object_key, CONTENT)
     destination = tmp_path / "source.pdf"
 
     checksum = await storage.download_to(
@@ -81,13 +81,13 @@ async def test_download_writes_file_and_returns_checksum(
 
 async def test_download_computes_checksum_in_a_single_pass(
     storage: S3ObjectStorage,
-    minio_container: MinioContainer,
+    minio_client: Minio,
     source_bucket: str,
     object_key: str,
     tmp_path: Path,
 ) -> None:
     # Второй проход по файлу ради суммы удваивает ввод-вывод на документе.
-    _put(minio_container, source_bucket, object_key, CONTENT)
+    _put(minio_client, source_bucket, object_key, CONTENT)
     destination = tmp_path / "source.pdf"
 
     checksum = await storage.download_to(
@@ -103,7 +103,7 @@ async def test_download_computes_checksum_in_a_single_pass(
 
 async def test_download_aborts_when_size_exceeds_max_bytes(
     storage: S3ObjectStorage,
-    minio_container: MinioContainer,
+    minio_client: Minio,
     source_bucket: str,
     object_key: str,
     tmp_path: Path,
@@ -111,7 +111,7 @@ async def test_download_aborts_when_size_exceeds_max_bytes(
     # Читать до конца, чтобы потом сказать «слишком большой», значит скачать
     # весь гигабайт: предел обязан обрывать поток.
     payload = b"x" * (1024 * 1024)
-    _put(minio_container, source_bucket, object_key, payload)
+    _put(minio_client, source_bucket, object_key, payload)
     destination = tmp_path / "source.pdf"
     limit = 4096
 
@@ -142,12 +142,12 @@ async def test_download_of_missing_object_raises_source_object_not_found(
 
 async def test_download_raises_checksum_mismatch_for_wrong_expected_hash(
     storage: S3ObjectStorage,
-    minio_container: MinioContainer,
+    minio_client: Minio,
     source_bucket: str,
     object_key: str,
     tmp_path: Path,
 ) -> None:
-    _put(minio_container, source_bucket, object_key, CONTENT)
+    _put(minio_client, source_bucket, object_key, CONTENT)
     destination = tmp_path / "source.pdf"
 
     with pytest.raises(ChecksumMismatch):
@@ -164,11 +164,11 @@ async def test_download_raises_checksum_mismatch_for_wrong_expected_hash(
 
 async def test_stat_returns_size_and_content_type(
     storage: S3ObjectStorage,
-    minio_container: MinioContainer,
+    minio_client: Minio,
     source_bucket: str,
     object_key: str,
 ) -> None:
-    _put(minio_container, source_bucket, object_key, CONTENT)
+    _put(minio_client, source_bucket, object_key, CONTENT)
 
     stat = await storage.stat(ObjectRef(bucket=source_bucket, key=object_key))
 
@@ -193,11 +193,11 @@ async def test_stat_of_missing_bucket_raises_source_object_not_found(
 
 async def test_exists_tells_present_from_absent(
     storage: S3ObjectStorage,
-    minio_container: MinioContainer,
+    minio_client: Minio,
     source_bucket: str,
     object_key: str,
 ) -> None:
-    _put(minio_container, source_bucket, object_key, CONTENT)
+    _put(minio_client, source_bucket, object_key, CONTENT)
 
     assert await storage.exists(ObjectRef(bucket=source_bucket, key=object_key))
     assert not await storage.exists(
@@ -219,7 +219,7 @@ async def test_wrong_credentials_are_a_permanent_error(
 
 async def test_multipart_etag_is_not_used_as_checksum(
     storage: S3ObjectStorage,
-    minio_container: MinioContainer,
+    minio_client: Minio,
     source_bucket: str,
     object_key: str,
     tmp_path: Path,
@@ -227,7 +227,7 @@ async def test_multipart_etag_is_not_used_as_checksum(
     # ETag многочастевой загрузки это хеш хешей с суффиксом «-N», и принять его
     # за sha256 содержимого означает сверять файл с несуществующей суммой.
     payload = b"z" * (6 * 1024 * 1024)
-    _put(minio_container, source_bucket, object_key, payload)
+    _put(minio_client, source_bucket, object_key, payload)
     destination = tmp_path / "source.pdf"
 
     checksum = await storage.download_to(
