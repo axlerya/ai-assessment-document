@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import re
 import unicodedata
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
@@ -267,4 +268,171 @@ COLLAPSE_SPACES = NormalizationRule(
     name="collapse_spaces",
     actions=frozenset({RuleAction.MAP, RuleAction.COLLAPSE, RuleAction.DROP}),
     transform=_collapse_spaces,
+)
+
+
+# Буквы, неотличимые в типичном шрифте.
+_LATIN_TO_CYRILLIC = {
+    "a": "а",
+    "c": "с",
+    "e": "е",
+    "o": "о",
+    "p": "р",
+    "x": "х",
+    "y": "у",
+    "A": "А",
+    "B": "В",
+    "C": "С",
+    "E": "Е",
+    "H": "Н",
+    "K": "К",
+    "M": "М",
+    "O": "О",
+    "P": "Р",
+    "T": "Т",
+    "X": "Х",
+}
+_CYRILLIC_TO_LATIN = {value: key for key, value in _LATIN_TO_CYRILLIC.items()}
+
+_LETTER = r"[^\W\d_]"
+_TOKEN_RE = re.compile(rf"{_LETTER}+")
+_HYPHENATED_BREAK_RE = re.compile(rf"({_LETTER}+)-\n({_LETTER}+)")
+
+# Дефис здесь часть слова, а не перенос. Таблица закрытая: определять это
+# по смыслу значило бы угадывать.
+_HYPHEN_KEEPING_PREFIXES = frozenset({"в", "во", "из", "кое", "по", "пол"})
+_HYPHEN_KEEPING_SUFFIXES = frozenset({"то", "либо", "нибудь", "таки"})
+_LIST_MARKER_RE = re.compile(r"^\s*(?:[—•\-]\s|\d+(?:\.\d+)*[.)]\s|[а-яa-z][.)]\s)")
+_SENTENCE_END = ".!?:;"
+_CYRILLIC_FIRST = "Ѐ"
+_CYRILLIC_LAST = "ӿ"
+
+_Replacement = tuple[int, int, str, RuleAction]
+
+
+def _is_cyrillic(char: str) -> bool:
+    return _CYRILLIC_FIRST <= char <= _CYRILLIC_LAST
+
+
+def _is_latin(char: str) -> bool:
+    return ("a" <= char <= "z") or ("A" <= char <= "Z")
+
+
+def _replacements_to_map(
+    text: str,
+    replacements: list[_Replacement],
+) -> tuple[str, OffsetMap]:
+    """Собирает результат и карту по списку замен; остальное переносится как есть."""
+    builder = OffsetMapBuilder()
+    parts: list[str] = []
+    cursor = 0
+    for start, end, target, action in replacements:
+        if start > cursor:
+            parts.append(text[cursor:start])
+            builder.add(
+                source=start - cursor, target=start - cursor, action=RuleAction.KEEP
+            )
+        parts.append(target)
+        builder.add(source=end - start, target=len(target), action=action)
+        cursor = end
+    if cursor < len(text):
+        parts.append(text[cursor:])
+        builder.add(
+            source=len(text) - cursor,
+            target=len(text) - cursor,
+            action=RuleAction.KEEP,
+        )
+    return "".join(parts), builder.build()
+
+
+def _dehyphenate(text: str) -> tuple[str, OffsetMap]:
+    """Снимает перенос слова, оставляя дефис там, где он часть слова."""
+    replacements: list[_Replacement] = []
+    for match in _HYPHENATED_BREAK_RE.finditer(text):
+        head, tail = match.group(1), match.group(2)
+        hyphen_position = match.start() + len(head)
+        start = (
+            hyphen_position + 1
+            if _hyphen_belongs_to_word(head, tail)
+            else hyphen_position
+        )
+        replacements.append((start, hyphen_position + 2, "", RuleAction.DROP))
+    return _replacements_to_map(text, replacements)
+
+
+def _hyphen_belongs_to_word(head: str, tail: str) -> bool:
+    # Заглавная после переноса это составное имя собственное: Санкт-Петербург.
+    return (
+        tail[0].isupper()
+        or head.lower() in _HYPHEN_KEEPING_PREFIXES
+        or tail.lower() in _HYPHEN_KEEPING_SUFFIXES
+    )
+
+
+def _join_soft_lines(text: str) -> tuple[str, OffsetMap]:
+    replacements: list[_Replacement] = []
+    for match in re.finditer(NEWLINE, text):
+        start = match.start()
+        if start == 0 or text[start + 1 : start + 2] == NEWLINE:
+            continue
+        if text[start - 1] in _SENTENCE_END or text[start - 1] == NEWLINE:
+            continue
+        # Маркер списка и нумерация это структура договора, её читает чанкование.
+        if _LIST_MARKER_RE.match(text[start + 1 :]):
+            continue
+        replacements.append((start, start + 1, SPACE, RuleAction.MAP))
+    return _replacements_to_map(text, replacements)
+
+
+def _fold_homoglyphs(text: str) -> tuple[str, OffsetMap]:
+    replacements: list[_Replacement] = []
+    for match in _TOKEN_RE.finditer(text):
+        table = _token_table(match.group())
+        if table is None:
+            continue
+        for offset, char in enumerate(match.group()):
+            replacement = table.get(char)
+            if replacement is not None:
+                position = match.start() + offset
+                replacements.append(
+                    (position, position + 1, replacement, RuleAction.MAP)
+                )
+    return _replacements_to_map(text, replacements)
+
+
+def _token_table(token: str) -> dict[str, str] | None:
+    """Таблица замен, если алфавит токена определяется однозначно.
+
+    Токен целиком из омоглифов алфавита не имеет и остаётся как есть.
+    """
+    cyrillic = sum(
+        1 for char in token if _is_cyrillic(char) and char not in _CYRILLIC_TO_LATIN
+    )
+    latin = sum(
+        1 for char in token if _is_latin(char) and char not in _LATIN_TO_CYRILLIC
+    )
+    if cyrillic and not latin:
+        return _LATIN_TO_CYRILLIC
+    if latin and not cyrillic:
+        return _CYRILLIC_TO_LATIN
+    return None
+
+
+DEHYPHENATE_LINE_BREAK = NormalizationRule(
+    name="dehyphenate_line_break",
+    actions=frozenset({RuleAction.DROP}),
+    transform=_dehyphenate,
+)
+
+JOIN_SOFT_LINES = NormalizationRule(
+    name="join_soft_lines",
+    actions=frozenset({RuleAction.MAP}),
+    transform=_join_soft_lines,
+)
+
+FOLD_HOMOGLYPHS = NormalizationRule(
+    name="fold_homoglyphs",
+    actions=frozenset({RuleAction.MAP}),
+    transform=_fold_homoglyphs,
+    applies_to_ocr_only=True,
 )
