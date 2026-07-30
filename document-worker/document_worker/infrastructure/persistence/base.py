@@ -26,7 +26,7 @@ NAMING_CONVENTION: Final[dict[str, str]] = {
 
 # Уверенность округляется доменом до четвёртого знака; numeric(4,3) отрезал бы
 # его, и среднее по документу разошлось бы с пересчитанным по страницам.
-CONFIDENCE_TYPE: Final[NUMERIC] = NUMERIC(precision=5, scale=4)
+CONFIDENCE_TYPE: Final[NUMERIC[Decimal]] = NUMERIC(precision=5, scale=4)
 
 
 class Base(DeclarativeBase):
