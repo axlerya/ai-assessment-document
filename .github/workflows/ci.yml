@@ -64,6 +64,20 @@ jobs:
       - name: Известные уязвимости в зависимостях
         run: uv run pip-audit
 
+  integration:
+    name: Интеграционные тесты
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: "document-worker/uv.lock"
+      - run: uv sync --frozen
+      - name: Миграции и ограничения схемы на живом PostgreSQL
+        run: uv run pytest -m integration
+
   unit:
     name: Unit-тесты (py${{ matrix.python-version }})
     runs-on: ubuntu-latest

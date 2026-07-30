@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
 import pytest
@@ -17,6 +18,7 @@ pytestmark = pytest.mark.integration
 PIPELINE_VERSION = "1.0.0"
 CHUNKING_VERSION = "1.0.0"
 CHECKSUM = "a" * 64
+NOW = datetime(2026, 7, 30, 12, 0, tzinfo=UTC)
 
 
 async def _insert(connection: AsyncConnection, table: str, **values: Any) -> None:
@@ -27,7 +29,7 @@ async def _insert(connection: AsyncConnection, table: str, **values: Any) -> Non
 
 
 async def _document(connection: AsyncConnection, **overrides: Any) -> uuid.UUID:
-    document_id = overrides.pop("id", uuid.uuid4())
+    document_id: uuid.UUID = overrides.pop("id", uuid.uuid4())
     values: dict[str, Any] = {
         "id": document_id,
         "bucket": "documents",
@@ -45,8 +47,8 @@ async def _page(
     document_id: uuid.UUID,
     **overrides: Any,
 ) -> uuid.UUID:
-    page_id = overrides.pop("id", uuid.uuid4())
-    text_value = overrides.pop("text", "договор аренды")
+    page_id: uuid.UUID = overrides.pop("id", uuid.uuid4())
+    text_value: str = overrides.pop("text", "договор аренды")
     values: dict[str, Any] = {
         "id": page_id,
         "document_id": document_id,
@@ -167,19 +169,18 @@ async def test_second_running_job_for_document_is_rejected(
     connection: AsyncConnection,
 ) -> None:
     document_id = await _document(connection)
-    common = {
+    common: dict[str, Any] = {
         "document_id": document_id,
         "status": "running",
         "trigger_event_id": uuid.uuid4(),
-        "started_at": text("now()"),
+        "started_at": NOW,
     }
     await _insert(
         connection,
         "processing_jobs",
         id=uuid.uuid4(),
         pipeline_version="1.0.0",
-        **{key: value for key, value in common.items() if key != "started_at"},
-        started_at=None,
+        **common,
     )
 
     with pytest.raises(IntegrityError):
@@ -188,8 +189,7 @@ async def test_second_running_job_for_document_is_rejected(
             "processing_jobs",
             id=uuid.uuid4(),
             pipeline_version="2.0.0",
-            **{key: value for key, value in common.items() if key != "started_at"},
-            started_at=None,
+            **common,
         )
 
 
@@ -320,7 +320,7 @@ async def test_processed_message_survives_missing_document(
         message_type="document.process.requested",
         status="in_progress",
         lease_owner="worker-1",
-        lease_expires_at=text("now() + interval '60 seconds'"),
+        lease_expires_at=NOW + timedelta(seconds=60),
     )
 
 

@@ -86,6 +86,14 @@ always_run = true
 stages = ["pre-push"]
 
 [[repos.hooks]]
+id = "alembic-single-head"
+name = "alembic: ровно одна голова миграций"
+language = "system"
+entry = "uv run --directory document-worker python scripts/check_single_alembic_head.py"
+files = "^document-worker/migrations/versions/.*\\.py$"
+pass_filenames = false
+
+[[repos.hooks]]
 id = "uv-lock-check"
 name = "uv.lock синхронизирован с pyproject.toml"
 language = "system"

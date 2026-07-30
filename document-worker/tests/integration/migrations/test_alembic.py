@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from tests.integration.conftest import alembic_config
 
 if TYPE_CHECKING:
+    from sqlalchemy import TextClause
     from sqlalchemy.ext.asyncio import AsyncConnection
 
 pytestmark = pytest.mark.integration
@@ -35,10 +36,14 @@ POSTGRES_IDENTIFIER_LIMIT = 63
 _TABLES_SQL = text(
     "SELECT tablename FROM pg_tables WHERE schemaname = 'public'",
 )
+# contype 'n' это NOT NULL: с PostgreSQL 18 они попадают в каталог с
+# автоименем и к конвенции отношения не имеют.
 _CONSTRAINTS_SQL = text(
     "SELECT conname FROM pg_constraint c"
     " JOIN pg_namespace n ON n.oid = c.connamespace"
-    " WHERE n.nspname = 'public'",
+    " LEFT JOIN pg_class t ON t.oid = c.conrelid"
+    " WHERE n.nspname = 'public' AND c.contype <> 'n'"
+    " AND coalesce(t.relname, '') <> 'alembic_version'",
 )
 _INDEXES_SQL = text(
     "SELECT indexname, indexdef FROM pg_indexes WHERE schemaname = 'public'",
@@ -58,12 +63,12 @@ async def _downgrade(dsn: str, revision: str) -> None:
     await asyncio.to_thread(command.downgrade, alembic_config(dsn), revision)
 
 
-async def _with_connection(dsn: str, statement: text) -> list[tuple[object, ...]]:
+async def _rows(dsn: str, statement: TextClause) -> list[tuple[str, ...]]:
     engine = create_async_engine(dsn)
     try:
         async with engine.connect() as connection:
             result = await connection.execute(statement)
-            return [tuple(row) for row in result]
+            return [tuple(str(value) for value in row) for row in result]
     finally:
         await engine.dispose()
 
@@ -71,7 +76,7 @@ async def _with_connection(dsn: str, statement: text) -> list[tuple[object, ...]
 async def test_upgrade_head_creates_all_charter_tables(empty_database: str) -> None:
     await _upgrade(empty_database)
 
-    tables = {row[0] for row in await _with_connection(empty_database, _TABLES_SQL)}
+    tables = {row[0] for row in await _rows(empty_database, _TABLES_SQL)}
 
     assert tables >= CHARTER_TABLES
 
@@ -83,7 +88,7 @@ async def test_downgrade_base_drops_everything_except_alembic_version(
 
     await _downgrade(empty_database, "base")
 
-    tables = {row[0] for row in await _with_connection(empty_database, _TABLES_SQL)}
+    tables = {row[0] for row in await _rows(empty_database, _TABLES_SQL)}
     assert tables <= {"alembic_version"}
 
 
@@ -96,7 +101,7 @@ async def test_upgrade_downgrade_upgrade_roundtrip(empty_database: str) -> None:
     await _downgrade(empty_database, "base")
     await _upgrade(empty_database)
 
-    tables = {row[0] for row in await _with_connection(empty_database, _TABLES_SQL)}
+    tables = {row[0] for row in await _rows(empty_database, _TABLES_SQL)}
     assert tables >= CHARTER_TABLES
     assert revisions, "в проекте нет ни одной миграции"
 
@@ -116,14 +121,14 @@ async def test_downgrade_with_existing_data_does_not_fail_on_foreign_keys(
 
     await _downgrade(empty_database, "base")
 
-    tables = {row[0] for row in await _with_connection(empty_database, _TABLES_SQL)}
+    tables = {row[0] for row in await _rows(empty_database, _TABLES_SQL)}
     assert tables <= {"alembic_version"}
 
 
 async def test_no_native_enum_types_are_created(empty_database: str) -> None:
     await _upgrade(empty_database)
 
-    enums = await _with_connection(empty_database, _ENUMS_SQL)
+    enums = await _rows(empty_database, _ENUMS_SQL)
 
     assert not enums, "словарные значения задаются varchar + CHECK"
 
@@ -131,7 +136,7 @@ async def test_no_native_enum_types_are_created(empty_database: str) -> None:
 async def test_all_constraint_names_follow_convention(empty_database: str) -> None:
     await _upgrade(empty_database)
 
-    names = [row[0] for row in await _with_connection(empty_database, _CONSTRAINTS_SQL)]
+    names = [row[0] for row in await _rows(empty_database, _CONSTRAINTS_SQL)]
 
     wrong = [name for name in names if not name.startswith(CONSTRAINT_PREFIXES)]
     assert not wrong, f"имена вне конвенции: {wrong}"
@@ -140,8 +145,8 @@ async def test_all_constraint_names_follow_convention(empty_database: str) -> No
 async def test_all_constraint_names_fit_63_bytes(empty_database: str) -> None:
     await _upgrade(empty_database)
 
-    names = [row[0] for row in await _with_connection(empty_database, _CONSTRAINTS_SQL)]
-    names += [row[0] for row in await _with_connection(empty_database, _INDEXES_SQL)]
+    names = [row[0] for row in await _rows(empty_database, _CONSTRAINTS_SQL)]
+    names += [row[0] for row in await _rows(empty_database, _INDEXES_SQL)]
 
     too_long = [
         name for name in names if len(name.encode()) > POSTGRES_IDENTIFIER_LIMIT
@@ -152,11 +157,11 @@ async def test_all_constraint_names_fit_63_bytes(empty_database: str) -> None:
 async def test_partial_indexes_have_predicates(empty_database: str) -> None:
     await _upgrade(empty_database)
 
-    indexes = await _with_connection(empty_database, _INDEXES_SQL)
+    indexes = await _rows(empty_database, _INDEXES_SQL)
     partial = {
-        str(name): str(definition)
+        name: definition
         for name, definition in indexes
-        if str(name)
+        if name
         in {
             "ix__documents__stale_processing",
             "ix__outbox_events__unpublished",

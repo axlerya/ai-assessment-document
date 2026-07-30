@@ -13,7 +13,7 @@ from alembic import command
 from alembic.config import Config
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
-from testcontainers.postgres import PostgresContainer
+from testcontainers.community.postgres import PostgresContainer
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Iterator
@@ -22,13 +22,6 @@ if TYPE_CHECKING:
 
 SERVICE_ROOT = Path(__file__).resolve().parents[2]
 POSTGRES_IMAGE = "postgres:18-alpine"
-
-
-def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
-    """Интеграционные тесты крутятся в session-цикле: там живёт контейнер."""
-    for item in items:
-        if item.get_closest_marker("integration"):
-            item.add_marker(pytest.mark.asyncio(loop_scope="session"))
 
 
 @pytest.fixture(scope="session")
