@@ -128,16 +128,17 @@ def test_low_mean_confidence_makes_page_illegible() -> None:
 
 
 def test_mean_confidence_is_weighted_by_word_length() -> None:
-    content = "ответственность и"
+    content = "ответственность сторон определяется договором и приложением к"
 
     verdict = POLICY.evaluate(
         method=ExtractionMethod.OCR,
-        words=_words(content, {"ответственность": 0.9, "и": 0.1}),
+        words=_words(content, {"и": 0.1, "к": 0.1}),
         content=content,
     )
 
-    # Простое среднее дало бы 0.5; вес по длине слова тянет к длинному слову.
-    assert verdict.mean_confidence.value > 0.8
+    # Простое среднее по семи словам дало бы 0.71: два коротких неуверенных
+    # токена весили бы столько же, сколько «ответственность».
+    assert verdict.mean_confidence.value > 0.9
 
 
 def test_adjacent_low_confidence_words_merge_into_single_span() -> None:
