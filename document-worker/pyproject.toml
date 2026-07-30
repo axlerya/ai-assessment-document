@@ -67,7 +67,7 @@ filterwarnings = ["error"]
 source = ["src/document_worker"]
 branch = true
 parallel = true
-concurrency = ["thread", "greenlet"]
+concurrency = ["thread"]   # "greenlet" добавляется вместе с sqlalchemy[asyncio] на этапе 8
 omit = ["*/migrations/*", "*/__main__.py"]
 
 [tool.coverage.report]
