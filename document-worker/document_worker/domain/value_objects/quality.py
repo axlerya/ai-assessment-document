@@ -22,6 +22,7 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
 
     from document_worker.domain.value_objects.paging import PageNumber
+    from document_worker.domain.value_objects.text import IllegibleSpan
 
 _METHODS_WITHOUT_CONFIDENCE = frozenset(
     {ExtractionMethod.TEXT_LAYER, ExtractionMethod.NONE}
@@ -183,6 +184,28 @@ class DocumentQualityStats:
         if self.total_chars == 0:
             return 0.0
         return self.illegible_chars / self.total_chars
+
+
+@dataclass(frozen=True, slots=True)
+class PageLegibilityVerdict:
+    """Решение о читаемости одной страницы."""
+
+    status: PageStatus
+    mean_confidence: OcrConfidence
+    illegible_spans: tuple[IllegibleSpan, ...]
+    illegible_ratio: float
+    warnings: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        """Не даёт объявить страницу читаемой при наличии неразборчивых мест."""
+        if (self.status is PageStatus.EXTRACTED) != (not self.illegible_spans):
+            raise InvariantViolation(
+                "читаемость страницы противоречит списку неразборчивых фрагментов",
+                context={
+                    "status": self.status.value,
+                    "spans": len(self.illegible_spans),
+                },
+            )
 
 
 @dataclass(frozen=True, slots=True)

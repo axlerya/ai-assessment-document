@@ -21,6 +21,13 @@ CONFIDENCE_PRECISION: Final[int] = 4
 MAX_ILLEGIBLE_CONFIDENCE: Final[float] = 0.75
 MAX_PAGE_TEXT_LENGTH: Final[int] = 1_000_000
 
+MIN_RENDER_DPI: Final[int] = 72
+MAX_RENDER_DPI: Final[int] = 600
+
+# Жёсткий потолок сущности, а не целевой размер чанка.
+MAX_CHUNK_TOKENS: Final[int] = 1024
+MAX_CHUNK_OVERLAP_CHARS: Final[int] = 400
+
 MIN_BUCKET_NAME_LENGTH: Final[int] = 3
 MAX_BUCKET_NAME_LENGTH: Final[int] = 63
 MAX_OBJECT_KEY_LENGTH: Final[int] = 1024

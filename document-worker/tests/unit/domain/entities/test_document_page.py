@@ -141,6 +141,30 @@ def test_page_with_illegible_status_and_no_spans_raises() -> None:
         _ocr_page(PageStatus.ILLEGIBLE, ())
 
 
+def test_page_with_partially_illegible_status_and_no_spans_raises() -> None:
+    with pytest.raises(InvariantViolation):
+        _ocr_page(PageStatus.PARTIALLY_ILLEGIBLE, ())
+
+
+def test_unreadable_status_without_spans_raises() -> None:
+    with pytest.raises(InvariantViolation):
+        DocumentPage(
+            id=PAGE_ID,
+            document_id=DOCUMENT_ID,
+            number=NUMBER,
+            pipeline_version=VERSION,
+            status=PageStatus.ILLEGIBLE,
+            text=RecognizedText(
+                content=CONTENT,
+                method=ExtractionMethod.OCR,
+                confidence=OcrConfidence(0.2),
+            ),
+            image_ref=IMAGE_REF,
+            render_dpi=RENDER_DPI,
+            created_at=CREATED_AT,
+        )
+
+
 def test_ocr_page_without_image_reference_raises() -> None:
     with pytest.raises(InvariantViolation):
         DocumentPage(
@@ -168,23 +192,6 @@ def test_ocr_page_with_absurd_render_dpi_raises(dpi: int) -> None:
             image_ref=IMAGE_REF,
             render_dpi=dpi,
             **_identity(),  # type: ignore[arg-type]
-        )
-
-
-def test_text_layer_page_with_failed_status_raises() -> None:
-    with pytest.raises(InvariantViolation):
-        DocumentPage(
-            id=PAGE_ID,
-            document_id=DOCUMENT_ID,
-            number=NUMBER,
-            pipeline_version=VERSION,
-            status=PageStatus.FAILED,
-            text=RecognizedText(
-                content=CONTENT,
-                method=ExtractionMethod.TEXT_LAYER,
-                confidence=None,
-            ),
-            created_at=CREATED_AT,
         )
 
 

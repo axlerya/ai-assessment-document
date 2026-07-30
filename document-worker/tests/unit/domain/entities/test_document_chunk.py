@@ -138,6 +138,38 @@ def test_chunk_rejects_token_count_outside_bounds(token_count: int) -> None:
         _chunk(token_count=token_count)
 
 
+def test_chunk_rejects_negative_illegible_count() -> None:
+    with pytest.raises(InvariantViolation):
+        DocumentChunk(
+            id=CHUNK_ID,
+            document_id=DOCUMENT_ID,
+            page_id=PAGE_ID,
+            page_number=NUMBER,
+            ordinal=0,
+            content="договор",
+            span=TextSpan(0, 7),
+            method=ExtractionMethod.TEXT_LAYER,
+            avg_confidence=None,
+            illegible_span_count=-1,
+            chunking_version=CHUNKING_VERSION,
+            checksum=Checksum.sha256_of("договор".encode()),
+            token_count=2,
+        )
+
+
+def test_chunk_rejects_overlap_above_hard_limit() -> None:
+    with pytest.raises(InvariantViolation):
+        _chunk(overlap_prefix_chars=401)
+
+
+def test_chunk_is_not_equal_to_other_types() -> None:
+    assert _chunk(span=TextSpan(0, 7)) != "чанк"
+
+
+def test_chunk_hash_is_by_identity() -> None:
+    assert hash(_chunk(span=TextSpan(0, 7))) == hash(_chunk(span=TextSpan(8, 14)))
+
+
 def test_chunk_rejects_overlap_longer_than_content() -> None:
     with pytest.raises(InvariantViolation):
         _chunk(span=TextSpan(0, 7), overlap_prefix_chars=7)
