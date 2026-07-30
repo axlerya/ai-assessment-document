@@ -21,12 +21,22 @@ from document_worker.domain.value_objects.enums import (
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
+    from document_worker.domain.value_objects.enums import PageFailureReason
     from document_worker.domain.value_objects.paging import PageNumber
     from document_worker.domain.value_objects.text import IllegibleSpan
 
 _METHODS_WITHOUT_CONFIDENCE = frozenset(
     {ExtractionMethod.TEXT_LAYER, ExtractionMethod.NONE}
 )
+
+
+@dataclass(frozen=True, slots=True)
+class PageFailure:
+    """Отказ страницы. Хранится собственными полями, а не выводится из статуса."""
+
+    reason: PageFailureReason
+    message: str
+    recoverable: bool = False
 
 
 @dataclass(frozen=True, slots=True)
