@@ -181,6 +181,51 @@ def test_rejects_drop_segment_with_non_empty_target() -> None:
         )
 
 
+def test_rejects_target_gap_between_segments() -> None:
+    with pytest.raises(InvariantViolation):
+        OffsetMap(
+            source_length=2,
+            target_length=3,
+            segments=(
+                OffsetSegment(0, 1, 0, 1, RuleAction.KEEP),
+                OffsetSegment(1, 2, 2, 3, RuleAction.KEEP),
+            ),
+        )
+
+
+def test_builder_ignores_empty_piece() -> None:
+    builder = OffsetMapBuilder()
+    builder.add(source=0, target=0, action=RuleAction.KEEP)
+    builder.add(source=1, target=1, action=RuleAction.KEEP)
+
+    assert builder.build().source_length == 1
+
+
+def test_compose_carries_unfolded_segment_through() -> None:
+    # "ﬁx" → "fix" → "fx": разворот лигатуры, затем удаление символа.
+    expansion = _built((1, 2, RuleAction.UNFOLD), (1, 1, RuleAction.KEEP))
+    removal = _built(
+        (1, 1, RuleAction.KEEP),
+        (1, 0, RuleAction.DROP),
+        (1, 1, RuleAction.KEEP),
+    )
+
+    composed = expansion.compose(removal)
+
+    assert composed.target_length == 2
+    assert composed.project_offset(1) == 1
+
+
+def test_compose_marks_fully_removed_segment_as_dropped() -> None:
+    expansion = _built((1, 2, RuleAction.UNFOLD), (1, 1, RuleAction.KEEP))
+    removal = _built((2, 0, RuleAction.DROP), (1, 1, RuleAction.KEEP))
+
+    composed = expansion.compose(removal)
+
+    assert composed.segments[0].action is RuleAction.DROP
+    assert composed.target_length == 1
+
+
 def test_rejects_overlapping_segments() -> None:
     with pytest.raises(InvariantViolation):
         OffsetMap(

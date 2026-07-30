@@ -42,6 +42,23 @@ def test_nfc_keeps_compatibility_symbols(symbol: str) -> None:
     assert symbol in text
 
 
+def test_nfc_maps_singleton_to_its_canonical_form() -> None:
+    # Знак ангстрема имеет каноническую форму — латинскую Å.
+    text, mapping = NFC_NORMALIZE.apply(chr(0x212B))
+
+    assert text == chr(0x00C5)
+    assert mapping.target_length == 1
+
+
+def test_nfc_refuses_to_expand_text() -> None:
+    # Этот символ разворачивается в два; расширять текст правило не вправе.
+    source = chr(0x0344)
+
+    text, _ = NFC_NORMALIZE.apply(source)
+
+    assert text == source
+
+
 def test_nfc_keeps_plain_text_untouched() -> None:
     source = "договор аренды"
 

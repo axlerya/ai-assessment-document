@@ -436,3 +436,17 @@ FOLD_HOMOGLYPHS = NormalizationRule(
     transform=_fold_homoglyphs,
     applies_to_ocr_only=True,
 )
+
+# Порядок важен: перенос снимается до склейки строк, омоглифы правятся уже по
+# собранным токенам, пробелы схлопываются последними.
+RULES: tuple[NormalizationRule, ...] = (
+    NFC_NORMALIZE,
+    FOLD_LIGATURES,
+    REMOVE_INVISIBLE,
+    STRIP_CONTROL,
+    UNIFY_DASHES,
+    DEHYPHENATE_LINE_BREAK,
+    JOIN_SOFT_LINES,
+    FOLD_HOMOGLYPHS,
+    COLLAPSE_SPACES,
+)
