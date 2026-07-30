@@ -81,10 +81,17 @@ class PageSummaryDTO:
 
 @dataclass(frozen=True, slots=True)
 class JobProgressDTO:
-    """Прогресс прогона для периодической записи."""
+    """Прогресс прогона для периодической записи.
 
-    pages_done: int
+    Счётчики по способам, а не суммарный: строка прогона хранит именно это
+    разбиение, а восстановить его из суммы нельзя.
+    """
+
+    pages_text_layer: int
+    pages_ocr: int
+    pages_hybrid: int
     pages_failed: int
+    chunks_created: int
     heartbeat_at: datetime
 
 

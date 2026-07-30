@@ -12,6 +12,7 @@ from document_worker.domain.errors import InvalidStatusTransition, InvariantViol
 from document_worker.domain.value_objects.enums import (
     CompletionOutcome,
     DocumentStatus,
+    ExtractionMethod,
     JobStatus,
     PageStatus,
     ProcessingStage,
@@ -211,26 +212,55 @@ def test_declare_pages_conflicting_value_raises() -> None:
 def test_register_page_result_counts_failed_pages_separately() -> None:
     job = _running(pages=3)
 
-    job.register_page(PageStatus.EXTRACTED)
-    job.register_page(PageStatus.PARTIALLY_ILLEGIBLE)
-    job.register_page(PageStatus.FAILED)
+    job.register_page(PageStatus.EXTRACTED, ExtractionMethod.TEXT_LAYER)
+    job.register_page(PageStatus.PARTIALLY_ILLEGIBLE, ExtractionMethod.OCR)
+    job.register_page(PageStatus.FAILED, ExtractionMethod.NONE)
 
     assert job.pages_done == 2
     assert job.pages_failed == 1
 
 
-def test_register_page_beyond_declared_total_raises() -> None:
+def test_register_page_splits_counters_by_extraction_method() -> None:
+    job = _running(pages=4)
+
+    job.register_page(PageStatus.EXTRACTED, ExtractionMethod.TEXT_LAYER)
+    job.register_page(PageStatus.EXTRACTED, ExtractionMethod.OCR)
+    job.register_page(PageStatus.ILLEGIBLE, ExtractionMethod.HYBRID)
+    job.register_page(PageStatus.FAILED, ExtractionMethod.NONE)
+
+    assert (job.pages_text_layer, job.pages_ocr, job.pages_hybrid) == (1, 1, 1)
+    assert job.pages_failed == 1
+
+
+@pytest.mark.parametrize(
+    ("status", "method"),
+    [
+        (PageStatus.EXTRACTED, ExtractionMethod.NONE),
+        (PageStatus.FAILED, ExtractionMethod.OCR),
+    ],
+)
+def test_register_page_rejects_method_contradicting_status(
+    status: PageStatus,
+    method: ExtractionMethod,
+) -> None:
     job = _running(pages=1)
-    job.register_page(PageStatus.EXTRACTED)
 
     with pytest.raises(InvariantViolation):
-        job.register_page(PageStatus.EXTRACTED)
+        job.register_page(status, method)
+
+
+def test_register_page_beyond_declared_total_raises() -> None:
+    job = _running(pages=1)
+    job.register_page(PageStatus.EXTRACTED, ExtractionMethod.TEXT_LAYER)
+
+    with pytest.raises(InvariantViolation):
+        job.register_page(PageStatus.EXTRACTED, ExtractionMethod.TEXT_LAYER)
 
 
 def test_register_page_without_declared_total_is_allowed() -> None:
     job = _running(pages=None)
 
-    job.register_page(PageStatus.EXTRACTED)
+    job.register_page(PageStatus.EXTRACTED, ExtractionMethod.TEXT_LAYER)
 
     assert job.pages_done == 1
 

@@ -19,9 +19,15 @@ PIPELINE_VERSION = "1.0.0"
 CHUNKING_VERSION = "1.0.0"
 CHECKSUM = "a" * 64
 NOW = datetime(2026, 7, 30, 12, 0, tzinfo=UTC)
+CORRELATION_ID = "trace-0000-0001"
+_TABLES_WITH_CORRELATION = frozenset(
+    {"documents", "processing_jobs", "processed_messages", "outbox_events"}
+)
 
 
 async def _insert(connection: AsyncConnection, table: str, **values: Any) -> None:
+    if table in _TABLES_WITH_CORRELATION:
+        values.setdefault("correlation_id", CORRELATION_ID)
     columns = ", ".join(values)
     placeholders = ", ".join(f":{name}" for name in values)
     statement = f"INSERT INTO {table} ({columns}) VALUES ({placeholders})"  # noqa: S608 — имена колонок собираются тестом, не вводом

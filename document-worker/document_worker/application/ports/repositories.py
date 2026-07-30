@@ -178,7 +178,7 @@ class ProcessedMessageRepository(Protocol):
         """Отмечает сообщение обработанным — только вместе с результатом."""
         ...
 
-    async def release(self, event_id: EventId, *, reason: str, at: datetime) -> None:
+    async def release(self, event_id: EventId, *, at: datetime) -> None:
         """Снимает лиз, оставляя запись незавершённой: следующая доставка продолжит."""
         ...
 

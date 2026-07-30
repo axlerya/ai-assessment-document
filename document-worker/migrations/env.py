@@ -10,6 +10,8 @@ from alembic import context
 from sqlalchemy import pool, text
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
+from document_worker.infrastructure.persistence.metadata import TARGET_METADATA
+
 if TYPE_CHECKING:
     from sqlalchemy.engine import Connection
 
@@ -29,7 +31,7 @@ def _configure(connection: Connection) -> None:
     connection.commit()
     context.configure(
         connection=connection,
-        target_metadata=None,
+        target_metadata=TARGET_METADATA,
         transaction_per_migration=True,
         compare_type=True,
         compare_server_default=True,
@@ -52,7 +54,7 @@ async def _run_online() -> None:
 def _run_offline() -> None:
     context.configure(
         url=config.get_main_option("sqlalchemy.url"),
-        target_metadata=None,
+        target_metadata=TARGET_METADATA,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
     )

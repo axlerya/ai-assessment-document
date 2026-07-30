@@ -40,6 +40,14 @@ class UnitOfWork(Protocol):
         """Отправляет накопленные изменения, не завершая транзакцию."""
         ...
 
+    def savepoint(self) -> AbstractAsyncContextManager[None]:
+        """Точка отката внутри транзакции.
+
+        Нужна там, где ожидается конфликт: в PostgreSQL любая ошибка переводит
+        транзакцию в aborted, и продолжить её без точки отката нельзя.
+        """
+        ...
+
 
 @runtime_checkable
 class UnitOfWorkFactory(Protocol):

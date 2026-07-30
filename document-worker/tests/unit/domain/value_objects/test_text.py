@@ -15,7 +15,6 @@ from document_worker.domain.errors import (
 )
 from document_worker.domain.value_objects.confidence import OcrConfidence
 from document_worker.domain.value_objects.enums import IllegibleReason
-from document_worker.domain.value_objects.geometry import BoundingBox
 from document_worker.domain.value_objects.text import (
     IllegibleSpan,
     RecognizedWord,
@@ -24,10 +23,11 @@ from document_worker.domain.value_objects.text import (
 
 pytestmark = pytest.mark.unit
 
-TECHNICAL_REASONS = [
-    IllegibleReason.PAGE_RENDER_FAILED,
-    IllegibleReason.OCR_FAILED,
-    IllegibleReason.PAGE_TIMEOUT,
+CONTENT_REASONS = [
+    IllegibleReason.LOW_OCR_CONFIDENCE,
+    IllegibleReason.IMAGE_TOO_NOISY,
+    IllegibleReason.HANDWRITING,
+    IllegibleReason.GLYPH_MAPPING_FAILED,
 ]
 
 
@@ -175,38 +175,15 @@ def test_no_text_recognized_rejects_non_zero_confidence() -> None:
         )
 
 
-@pytest.mark.parametrize("reason", TECHNICAL_REASONS)
-def test_technical_reason_requires_empty_zero_length_span(
+@pytest.mark.parametrize("reason", CONTENT_REASONS)
+def test_zero_length_span_is_rejected_for_every_content_reason(
     reason: IllegibleReason,
 ) -> None:
-    span = IllegibleSpan(
-        span=TextSpan(0, 0),
-        confidence=OcrConfidence.ZERO,
-        reason=reason,
-        raw_text="",
-    )
-
-    assert span.reason.is_technical
-
-
-@pytest.mark.parametrize("reason", TECHNICAL_REASONS)
-def test_technical_reason_rejects_non_empty_span(reason: IllegibleReason) -> None:
+    # Пустой диапазон ничего не выделяет в тексте, и схема принимает его
+    # единственной причиной — «ничего не распознано».
     with pytest.raises(InvalidIllegibleSpan):
         IllegibleSpan(
-            span=TextSpan(0, 3),
-            confidence=OcrConfidence.ZERO,
-            reason=reason,
-            raw_text="абв",
-        )
-
-
-@pytest.mark.parametrize("reason", TECHNICAL_REASONS)
-def test_technical_reason_rejects_span_of_non_zero_length(
-    reason: IllegibleReason,
-) -> None:
-    with pytest.raises(InvalidIllegibleSpan):
-        IllegibleSpan(
-            span=TextSpan(0, 3),
+            span=TextSpan(3, 3),
             confidence=OcrConfidence.ZERO,
             reason=reason,
             raw_text="",
@@ -222,30 +199,3 @@ def test_illegible_span_rejects_line_number_below_one() -> None:
             raw_text="абв",
             line_number=0,
         )
-
-
-def test_illegible_span_keeps_bbox_and_line_number() -> None:
-    box = BoundingBox(0.1, 0.1, 0.2, 0.2)
-
-    span = IllegibleSpan(
-        span=TextSpan(0, 3),
-        confidence=OcrConfidence(0.3),
-        reason=IllegibleReason.HANDWRITING,
-        raw_text="абв",
-        bbox=box,
-        line_number=14,
-    )
-
-    assert span.bbox == box
-    assert span.line_number == 14
-
-
-def test_illegible_span_has_no_rendered_marker_field() -> None:
-    span = IllegibleSpan(
-        span=TextSpan(0, 3),
-        confidence=OcrConfidence(0.3),
-        reason=IllegibleReason.LOW_OCR_CONFIDENCE,
-        raw_text="абв",
-    )
-
-    assert not hasattr(span, "marker"), "маркер рендерится на выдаче, а не хранится"

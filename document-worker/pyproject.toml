@@ -68,6 +68,9 @@ isort.required-imports = ["from __future__ import annotations"]
 strict = true
 runtime-evaluated-base-classes = [
     "pydantic.BaseModel", "pydantic_settings.BaseSettings", "sqlalchemy.orm.DeclarativeBase",
+    # Mapped[...] резолвится SQLAlchemy в рантайме, а наследование от DeclarativeBase
+    # ruff по цепочке не отслеживает — нужен именно наш Base.
+    "document_worker.infrastructure.persistence.base.Base",
 ]
 # fast_depends резолвит аннотации обработчика через get_type_hints() в рантайме,
 # поэтому их импорты нельзя прятать в блок TYPE_CHECKING.
