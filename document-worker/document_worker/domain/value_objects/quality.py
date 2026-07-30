@@ -243,9 +243,13 @@ class DocumentStatusVerdict:
                 "вердикт объявляет только терминальный статус",
                 context={"status": self.status.value},
             )
-        if self.status is DocumentStatus.PARTIALLY_PROCESSED and not self.problem_pages:
+        # Низкое среднее confidence это причина без проблемных страниц: все
+        # страницы прочитаны, но доверять документу как полному источнику нельзя.
+        if self.status is DocumentStatus.PARTIALLY_PROCESSED and not (
+            self.problem_pages or self.reasons
+        ):
             raise InvariantViolation(
-                "частичная обработка без проблемных страниц бессмысленна",
+                "частичная обработка без единой причины бессмысленна",
                 context={"status": self.status.value},
             )
         if self.status is DocumentStatus.PROCESSED and self.problem_pages:

@@ -293,15 +293,23 @@ def test_document_status_verdict_requires_terminal_status() -> None:
         )
 
 
-def test_partially_processed_verdict_requires_problem_pages() -> None:
+def test_partially_processed_verdict_requires_a_reason() -> None:
     stats = DocumentQualityStats.from_outcomes([_text_layer(1), _failed(2)])
 
     with pytest.raises(InvariantViolation):
-        DocumentStatusVerdict(
-            status=DocumentStatus.PARTIALLY_PROCESSED,
-            stats=stats,
-            reasons=("одна страница не прочитана",),
-        )
+        DocumentStatusVerdict(status=DocumentStatus.PARTIALLY_PROCESSED, stats=stats)
+
+
+def test_partially_processed_verdict_accepts_reason_without_problem_pages() -> None:
+    stats = DocumentQualityStats.from_outcomes([_ocr(1, confidence=0.5)])
+
+    verdict = DocumentStatusVerdict(
+        status=DocumentStatus.PARTIALLY_PROCESSED,
+        stats=stats,
+        reasons=("low_mean_confidence",),
+    )
+
+    assert verdict.problem_pages == ()
 
 
 def test_processed_verdict_forbids_problem_pages() -> None:

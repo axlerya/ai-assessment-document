@@ -147,7 +147,7 @@ def test_processed_event_forbids_failed_pages() -> None:
         _processed(pages_text_layer=2, pages_ocr=1, pages_hybrid=0, pages_failed=1)
 
 
-def test_partially_processed_event_requires_non_empty_problem_pages() -> None:
+def test_partially_processed_event_requires_a_reason_or_problem_pages() -> None:
     with pytest.raises(InvariantViolation):
         _partially(
             pages_text_layer=2,
@@ -157,7 +157,23 @@ def test_partially_processed_event_requires_non_empty_problem_pages() -> None:
             partially_illegible_page_numbers=(),
             illegible_page_numbers=(),
             failed_page_numbers=(),
+            reasons=(),
         )
+
+
+def test_partially_processed_event_accepts_reason_without_problem_pages() -> None:
+    event = _partially(
+        pages_text_layer=2,
+        pages_ocr=2,
+        pages_hybrid=0,
+        pages_failed=0,
+        partially_illegible_page_numbers=(),
+        illegible_page_numbers=(),
+        failed_page_numbers=(),
+        reasons=("low_mean_confidence",),
+    )
+
+    assert event.failed_page_numbers == ()
 
 
 @pytest.mark.parametrize(
