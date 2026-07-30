@@ -1,4 +1,6 @@
-minimum_prek_version = "0.4.0"
+minimum_prek_version = "0.4.9"
+default_install_hook_types = ["pre-commit", "commit-msg", "pre-push"]
+fail_fast = false
 
 [[repos]]
 repo = "builtin"
@@ -13,14 +15,16 @@ hooks = [
   { id = "check-yaml" },
   { id = "check-toml" },
   { id = "check-json" },
-  { id = "check-added-large-files", args = ["--maxkb=1000"], exclude = "(^|/)uv\\.lock$" },
+  { id = "check-added-large-files", args = ["--maxkb=1000"], exclude = "(^|/)uv\\.lock$|^document-worker/tests/fixtures/real/.*\\.pdf$" },
 ]
 
 [[repos]]
 repo = "https://github.com/pre-commit/pre-commit-hooks"
 rev = "v6.0.0"
 hooks = [
-  { id = "debug-statements", files = "^parser/.*\\.py$" },
+  { id = "debug-statements", files = "^document-worker/(document_worker|tests|scripts|eval)/.*\\.py$" },
+  { id = "name-tests-test", args = ["--pytest-test-first"], files = "^document-worker/tests/.*\\.py$" },
+  { id = "check-executables-have-shebangs" },
 ]
 
 [[repos]]
@@ -39,8 +43,62 @@ hooks = [
 
 [[repos]]
 repo = "https://github.com/astral-sh/ruff-pre-commit"
-rev = "v0.13.1"
+rev = "v0.16.0"
 hooks = [
-  { id = "ruff-check", args = ["--fix"], files = "^parser/.*\\.py$" },
-  { id = "ruff-format", files = "^parser/.*\\.py$" },
+  { id = "ruff-check", args = ["--fix", "--exit-non-zero-on-fix"], files = "^document-worker/.*\\.py$" },
+  { id = "ruff-format", files = "^document-worker/.*\\.py$" },
 ]
+
+# --------------------------- локальные хуки (все на language = "system") ---------------------------
+[[repos]]
+repo = "local"
+
+[[repos.hooks]]
+id = "mypy"
+name = "mypy --strict (document-worker)"
+language = "system"
+entry = "uv run --directory document-worker mypy document_worker tests"
+files = "^document-worker/(document_worker|tests)/.*\\.py$"
+pass_filenames = false
+require_serial = true
+
+[[repos.hooks]]
+id = "import-linter"
+name = "import-linter: границы слоёв"
+language = "system"
+entry = "uv run --directory document-worker lint-imports"
+files = "^document-worker/(document_worker/.*\\.py|pyproject\\.toml)$"
+pass_filenames = false
+require_serial = true
+
+[[repos.hooks]]
+id = "deptry"
+name = "deptry: неиспользуемые и необъявленные зависимости"
+language = "system"
+entry = "uv run --directory document-worker deptry document_worker"
+files = "^document-worker/(document_worker/.*\\.py|pyproject\\.toml)$"
+pass_filenames = false
+
+[[repos.hooks]]
+id = "uv-lock-check"
+name = "uv.lock синхронизирован с pyproject.toml"
+language = "system"
+entry = "uv lock --check --directory document-worker"
+files = "^document-worker/(pyproject\\.toml|uv\\.lock)$"
+pass_filenames = false
+
+[[repos.hooks]]
+id = "commit-message-format"
+name = "формат коммита: feature|fix|docs: описание"
+language = "system"
+entry = "python scripts/check_commit_message.py"
+stages = ["commit-msg"]
+
+[[repos.hooks]]
+id = "pytest-unit"
+name = "pytest unit (pre-push)"
+language = "system"
+entry = "uv run --directory document-worker pytest tests/unit -q -p no:randomly --no-cov"
+pass_filenames = false
+always_run = true
+stages = ["pre-push"]
