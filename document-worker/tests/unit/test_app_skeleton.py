@@ -1,4 +1,4 @@
-"""Тесты композиционного корня: ASGI-приложение и liveness-эндпоинт (ADR-0008)."""
+"""Тесты композиционного корня: ASGI-приложение и liveness-эндпоинт."""
 
 from __future__ import annotations
 
@@ -66,7 +66,7 @@ def test_create_app_returns_asgi_application() -> None:
     app = create_app()
 
     assert isinstance(app, AsgiFastStream), (
-        "ADR-0008: приложение — AsgiFastStream, второго HTTP-сервера в проекте нет"
+        "приложение — AsgiFastStream, второго HTTP-сервера в проекте нет"
     )
 
 
@@ -91,4 +91,4 @@ def test_run_starts_asgi_server_on_port_8080(monkeypatch: pytest.MonkeyPatch) ->
     entrypoint.run()
 
     assert isinstance(captured["app"], AsgiFastStream)
-    assert captured["kwargs"]["port"] == 8080, "ADR-0008: единственный порт — 8080"
+    assert captured["kwargs"]["port"] == 8080, "единственный порт сервиса — 8080"
