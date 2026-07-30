@@ -12,6 +12,7 @@ dependencies = [
     "sqlalchemy[asyncio]>=2.0.51,<2.1",
     "asyncpg>=0.31.0,<0.32",
     "alembic>=1.18.5,<2",
+    "aioboto3>=15.5.0,<16",
 ]
 
 [project.scripts]
@@ -39,10 +40,14 @@ test = [
     "pytest-timeout>=2.4.0",
     "coverage[toml]>=7.15.2",
     "hypothesis>=6.145",
-    "testcontainers[postgres]>=4.15.0",
+    "testcontainers[postgres,minio]>=4.15.0",
 ]
 lint = ["ruff>=0.16.0", "import-linter>=2.13", "deptry>=0.25.1", "pip-audit>=2.10.1"]
-typing = ["mypy>=2.3.0", "asyncpg-stubs>=0.31.3"]
+typing = [
+    "mypy>=2.3.0",
+    "asyncpg-stubs>=0.31.3",
+    "types-aioboto3>=15.5.0",
+]
 
 [tool.ruff]
 target-version = "py312"
@@ -78,8 +83,9 @@ runtime-evaluated-decorators = ["faststream.asgi.get", "faststream.asgi.post"]
 
 [tool.ruff.lint.per-file-ignores]
 # INP001: тесты импортируются в режиме importlib, файлы __init__.py им не нужны
+# ASYNC240: тесты работают с файлами синхронно — это проверка, а не рабочий цикл
 "tests/**/*.py" = ["S101", "PLR2004", "D100", "D101", "D102", "D103", "ANN201", "SLF001",
-                   "INP001"]
+                   "INP001", "ASYNC240"]
 "migrations/**/*.py" = ["INP001", "D", "ERA001"]
 "scripts/**/*.py" = ["INP001", "T201"]
 "document_worker/bootstrap/**/*.py" = ["PLR0913"]   # composition root: много параметров — норма
