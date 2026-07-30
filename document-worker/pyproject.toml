@@ -13,6 +13,8 @@ dependencies = [
     "asyncpg>=0.31.0,<0.32",
     "alembic>=1.18.5,<2",
     "aioboto3>=15.5.0,<16",
+    "aiobotocore>=2.25,<3",
+    "botocore>=1.40,<2",
 ]
 
 [project.scripts]
@@ -46,7 +48,7 @@ lint = ["ruff>=0.16.0", "import-linter>=2.13", "deptry>=0.25.1", "pip-audit>=2.1
 typing = [
     "mypy>=2.3.0",
     "asyncpg-stubs>=0.31.3",
-    "types-aioboto3>=15.5.0",
+    "types-aioboto3[s3]>=15.5.0",
 ]
 
 [tool.ruff]

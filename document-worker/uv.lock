@@ -579,8 +579,10 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "aioboto3" },
+    { name = "aiobotocore" },
     { name = "alembic" },
     { name = "asyncpg" },
+    { name = "botocore" },
     { name = "faststream", extra = ["rabbit"] },
     { name = "sqlalchemy", extra = ["asyncio"] },
     { name = "uvicorn" },
@@ -602,7 +604,7 @@ dev = [
     { name = "pytest-timeout" },
     { name = "ruff" },
     { name = "testcontainers", extra = ["minio"] },
-    { name = "types-aioboto3" },
+    { name = "types-aioboto3", extra = ["s3"] },
 ]
 lint = [
     { name = "deptry" },
@@ -623,14 +625,16 @@ test = [
 typing = [
     { name = "asyncpg-stubs" },
     { name = "mypy" },
-    { name = "types-aioboto3" },
+    { name = "types-aioboto3", extra = ["s3"] },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "aioboto3", specifier = ">=15.5.0,<16" },
+    { name = "aiobotocore", specifier = ">=2.25,<3" },
     { name = "alembic", specifier = ">=1.18.5,<2" },
     { name = "asyncpg", specifier = ">=0.31.0,<0.32" },
+    { name = "botocore", specifier = ">=1.40,<2" },
     { name = "faststream", extras = ["rabbit"], specifier = ">=0.7.3,<0.8" },
     { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0.51,<2.1" },
     { name = "uvicorn", specifier = ">=0.42,<0.43" },
@@ -652,7 +656,7 @@ dev = [
     { name = "pytest-timeout", specifier = ">=2.4.0" },
     { name = "ruff", specifier = ">=0.16.0" },
     { name = "testcontainers", extras = ["postgres", "minio"], specifier = ">=4.15.0" },
-    { name = "types-aioboto3", specifier = ">=15.5.0" },
+    { name = "types-aioboto3", extras = ["s3"], specifier = ">=15.5.0" },
 ]
 lint = [
     { name = "deptry", specifier = ">=0.25.1" },
@@ -673,7 +677,7 @@ test = [
 typing = [
     { name = "asyncpg-stubs", specifier = ">=0.31.3" },
     { name = "mypy", specifier = ">=2.3.0" },
-    { name = "types-aioboto3", specifier = ">=15.5.0" },
+    { name = "types-aioboto3", extras = ["s3"], specifier = ">=15.5.0" },
 ]
 
 [[package]]
@@ -1798,6 +1802,11 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/ec/1d/e187fbe9771dffb5f0801e315ac23a6c383c14d1cbb90da6ca3ad1ea9b06/types_aioboto3-15.5.0-py3-none-any.whl", hash = "sha256:8aed7c9b6fe9b59e6ce74f7a6db7b8a9912a34c8f80ed639fac1fa59d6b20aa1", size = 42521, upload-time = "2025-10-31T01:11:47.832Z" },
 ]
 
+[package.optional-dependencies]
+s3 = [
+    { name = "types-aiobotocore-s3" },
+]
+
 [[package]]
 name = "types-aiobotocore"
 version = "3.8.0"
@@ -1808,6 +1817,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/7d/45/c64306ebe691707718e5bd9c1ba399aa724f77fca0006ce41d2adfd61b50/types_aiobotocore-3.8.0.tar.gz", hash = "sha256:5caeea9c91a6c37a92aa0b642c318a4c9a746f537bd62fec55d0a3313742d265", size = 88508, upload-time = "2026-07-20T03:11:56.704Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/e5/31/686c6838ac5564da34d0d76d937e2974b65b3ee0a6ebac6725d179f98e55/types_aiobotocore-3.8.0-py3-none-any.whl", hash = "sha256:6426020e35c3275899b0b3091780bb3f8f04bc79d519d0437ada57b9da5f3130", size = 55007, upload-time = "2026-07-20T03:11:53.262Z" },
+]
+
+[[package]]
+name = "types-aiobotocore-s3"
+version = "2.25.2"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/a7/c6/9bb91a44eed1114690edb15d8251f32392e355dfa0a5b8e1c190b4cf89a4/types_aiobotocore_s3-2.25.2.tar.gz", hash = "sha256:678aa425491af19bd6d011d59ecdbbb7ae7e95800efddcf4fd559ab72c94e194", size = 75955, upload-time = "2025-11-12T01:52:06.536Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/b4/0a/d0d9faefd7caa8536eb97647c38c711e73ab83341a65119d08c2cb20957d/types_aiobotocore_s3-2.25.2-py3-none-any.whl", hash = "sha256:151301e84bb2f1cbf30f0d1ef791bb75c141cfbfe47b93fd317b7f1ba3eb35e4", size = 83626, upload-time = "2025-11-12T01:52:04.763Z" },
 ]
 
 [[package]]

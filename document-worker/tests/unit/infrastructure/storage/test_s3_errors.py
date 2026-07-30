@@ -6,6 +6,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 from botocore.exceptions import (
     ClientError,
@@ -30,13 +32,11 @@ ENDPOINT = "http://localhost:9000"
 
 
 def _client_error(code: str, status: int) -> ClientError:
-    return ClientError(
-        {
-            "Error": {"Code": code, "Message": code},
-            "ResponseMetadata": {"HTTPStatusCode": status},
-        },
-        "HeadObject",
-    )
+    response: Any = {
+        "Error": {"Code": code, "Message": code},
+        "ResponseMetadata": {"HTTPStatusCode": status},
+    }
+    return ClientError(response, "HeadObject")
 
 
 @pytest.mark.parametrize(
