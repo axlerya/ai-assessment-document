@@ -39,7 +39,7 @@ CREATE TABLE documents (
     failure_code           varchar(64),
     failure_stage          varchar(32),
     failure_message        text,
-    correlation_id         uuid,
+    correlation_id         varchar(128)  NOT NULL,
     version                integer       NOT NULL DEFAULT 0,
     created_at             timestamptz   NOT NULL DEFAULT now(),
     updated_at             timestamptz   NOT NULL DEFAULT now(),
@@ -89,7 +89,7 @@ CREATE TABLE processing_jobs (
     status           varchar(16) NOT NULL DEFAULT 'queued',
     attempt          integer     NOT NULL DEFAULT 1,
     trigger_event_id uuid        NOT NULL,
-    correlation_id   uuid,
+    correlation_id   varchar(128) NOT NULL,
     pages_total      integer,
     pages_text_layer integer     NOT NULL DEFAULT 0,
     pages_ocr        integer     NOT NULL DEFAULT 0,
@@ -97,6 +97,7 @@ CREATE TABLE processing_jobs (
     pages_failed     integer     NOT NULL DEFAULT 0,
     chunks_created   integer     NOT NULL DEFAULT 0,
     failure_code     varchar(64),
+    failure_stage    varchar(32),
     failure_message  text,
     heartbeat_at     timestamptz,
     started_at       timestamptz,
@@ -130,8 +131,9 @@ CREATE TABLE processing_jobs (
         status <> 'running' OR started_at IS NOT NULL),
     CONSTRAINT ck__processing_jobs__terminal_has_finished CHECK (
         status NOT IN ('succeeded','failed') OR finished_at IS NOT NULL),
-    CONSTRAINT ck__processing_jobs__failed_has_code CHECK (
-        status <> 'failed' OR failure_code IS NOT NULL),
+    CONSTRAINT ck__processing_jobs__failed_has_failure CHECK (
+        status <> 'failed'
+        OR (failure_code IS NOT NULL AND failure_stage IS NOT NULL)),
     CONSTRAINT ck__processing_jobs__finished_after_started CHECK (
         finished_at IS NULL OR started_at IS NULL OR finished_at >= started_at)
 )
@@ -147,7 +149,7 @@ CREATE TABLE document_pages (
     extraction_method    varchar(16)   NOT NULL,
     text                 text          NOT NULL DEFAULT '',
     text_length          integer       NOT NULL DEFAULT 0,
-    ocr_confidence       numeric(4,3),
+    ocr_confidence       numeric(5,4),
     illegible_span_count integer       NOT NULL DEFAULT 0,
     image_bucket         varchar(63),
     image_key            varchar(1024),
@@ -220,7 +222,7 @@ CREATE TABLE document_illegible_spans (
     start_offset integer          NOT NULL,
     end_offset   integer          NOT NULL,
     reason       varchar(32)      NOT NULL,
-    confidence   numeric(4,3)     NOT NULL,
+    confidence   numeric(5,4)     NOT NULL,
     raw_text     text             NOT NULL,
     line_number  integer,
     bbox_x0      double precision,
@@ -240,7 +242,7 @@ CREATE TABLE document_illegible_spans (
         start_offset >= 0 AND end_offset >= start_offset),
     CONSTRAINT ck__illegible_spans__reason CHECK (reason IN (
         'low_ocr_confidence','no_text_recognized','image_too_noisy',
-        'handwriting','glyph_mapping_failed','page_render_failed')),
+        'handwriting','glyph_mapping_failed')),
     CONSTRAINT ck__illegible_spans__zero_length_only_for_no_text CHECK (
         end_offset > start_offset OR reason = 'no_text_recognized'),
     CONSTRAINT ck__illegible_spans__raw_text_empty_for_no_text CHECK (
@@ -274,7 +276,7 @@ CREATE TABLE document_chunks (
     token_count          integer     NOT NULL,
     overlap_prefix_chars integer     NOT NULL DEFAULT 0,
     extraction_method    varchar(16) NOT NULL,
-    avg_ocr_confidence   numeric(4,3),
+    avg_ocr_confidence   numeric(5,4),
     illegible_span_count integer     NOT NULL DEFAULT 0,
     heading_path         jsonb       NOT NULL DEFAULT '[]'::jsonb,
     content_hash         varchar(64) NOT NULL,
@@ -330,7 +332,7 @@ CREATE TABLE processed_messages (
     lease_owner      varchar(64),
     lease_expires_at timestamptz,
     attempts         integer      NOT NULL DEFAULT 1,
-    correlation_id   uuid,
+    correlation_id   varchar(128) NOT NULL,
     first_seen_at    timestamptz  NOT NULL DEFAULT now(),
     updated_at       timestamptz  NOT NULL DEFAULT now(),
     completed_at     timestamptz,
@@ -365,7 +367,7 @@ CREATE TABLE outbox_events (
     routing_key      varchar(255) NOT NULL,
     payload          jsonb        NOT NULL,
     headers          jsonb        NOT NULL DEFAULT '{}'::jsonb,
-    correlation_id   uuid,
+    correlation_id   varchar(128) NOT NULL,
     occurred_at      timestamptz  NOT NULL DEFAULT now(),
     available_at     timestamptz  NOT NULL DEFAULT now(),
     lease_owner      varchar(64),
@@ -400,8 +402,7 @@ CREATE TABLE outbox_events (
 _INDEXES = (
     "CREATE INDEX ix__documents__stale_processing ON documents (processing_started_at)"
     " WHERE status = 'processing'",
-    "CREATE INDEX ix__documents__correlation_id ON documents (correlation_id)"
-    " WHERE correlation_id IS NOT NULL",
+    "CREATE INDEX ix__documents__correlation_id ON documents (correlation_id)",
     "CREATE UNIQUE INDEX uq__processing_jobs__active ON processing_jobs (document_id)"
     " WHERE status = 'running'",
     "CREATE INDEX ix__processing_jobs__stale ON processing_jobs (heartbeat_at)"

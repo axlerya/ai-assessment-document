@@ -145,13 +145,13 @@ class IllegibleSpan:
             )
         if self.reason is IllegibleReason.NO_TEXT_RECOGNIZED:
             self._require_nothing_recognized()
-        if self.reason.is_technical:
-            self._require_nothing_recognized()
-            if not self.span.is_empty:
-                raise InvalidIllegibleSpan(
-                    "технический сбой не оставляет диапазона в тексте",
-                    context={"reason": self.reason.value, "length": self.span.length},
-                )
+        elif self.span.is_empty:
+            # Диапазон нулевой длины ничего не выделяет в тексте, поэтому у
+            # любой другой причины он бессмысленен — это же требует и схема.
+            raise InvalidIllegibleSpan(
+                "непустая причина требует непустого диапазона",
+                context={"reason": self.reason.value},
+            )
 
     def _require_nothing_recognized(self) -> None:
         # Непустой raw_text здесь означал бы выдуманный текст.

@@ -115,21 +115,17 @@ class JobStatus(StrEnum):
 
 
 class IllegibleReason(StrEnum):
-    """Причина, по которой фрагмент помечен неразборчивым."""
+    """Причина, по которой фрагмент документа помечен неразборчивым.
+
+    Только свойства самого документа. Сбой обработки страницу не размечает,
+    а отменяет целиком — его причина живёт в PageFailureReason.
+    """
 
     LOW_OCR_CONFIDENCE = "low_ocr_confidence"
     NO_TEXT_RECOGNIZED = "no_text_recognized"
     IMAGE_TOO_NOISY = "image_too_noisy"
     HANDWRITING = "handwriting"
     GLYPH_MAPPING_FAILED = "glyph_mapping_failed"
-    PAGE_RENDER_FAILED = "page_render_failed"
-    OCR_FAILED = "ocr_failed"
-    PAGE_TIMEOUT = "page_timeout"
-
-    @property
-    def is_technical(self) -> bool:
-        """Сбой обработки, а не свойство документа. Рукопись сюда не входит."""
-        return self in _TECHNICAL_ILLEGIBLE_REASONS
 
 
 class ProcessingStage(StrEnum):
@@ -168,14 +164,6 @@ _USABLE_PAGE_STATUSES: Final[frozenset[PageStatus]] = frozenset(
 
 _OCR_BASED_METHODS: Final[frozenset[ExtractionMethod]] = frozenset(
     {ExtractionMethod.OCR, ExtractionMethod.HYBRID}
-)
-
-_TECHNICAL_ILLEGIBLE_REASONS: Final[frozenset[IllegibleReason]] = frozenset(
-    {
-        IllegibleReason.PAGE_RENDER_FAILED,
-        IllegibleReason.OCR_FAILED,
-        IllegibleReason.PAGE_TIMEOUT,
-    }
 )
 
 # Возврат из терминального статуса в processing разрешён только повторной

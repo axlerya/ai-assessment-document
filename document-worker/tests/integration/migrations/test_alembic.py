@@ -185,8 +185,8 @@ async def _insert_document(connection: AsyncConnection, document_id: uuid.UUID) 
     await connection.execute(
         text(
             "INSERT INTO documents (id, bucket, object_key, declared_mime_type,"
-            " declared_size_bytes) VALUES (:id, 'documents', 'a/source.pdf',"
-            " 'application/pdf', 1024)"
+            " declared_size_bytes, correlation_id) VALUES (:id, 'documents',"
+            " 'a/source.pdf', 'application/pdf', 1024, 'trace-0000-0001')"
         ),
         {"id": document_id},
     )

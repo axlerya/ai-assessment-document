@@ -10,6 +10,7 @@ from document_worker.domain.value_objects.enums import (
     ExtractionMethod,
     IllegibleReason,
     JobStatus,
+    PageFailureReason,
     PageStatus,
     ProcessingStage,
 )
@@ -135,20 +136,19 @@ def test_only_none_method_yields_no_text() -> None:
     assert without_text == {ExtractionMethod.NONE}
 
 
-def test_technical_illegible_reasons_are_exactly_three() -> None:
-    technical = {reason for reason in IllegibleReason if reason.is_technical}
-
-    assert technical == {
-        IllegibleReason.PAGE_RENDER_FAILED,
-        IllegibleReason.OCR_FAILED,
-        IllegibleReason.PAGE_TIMEOUT,
+def test_illegible_reasons_and_page_failures_do_not_overlap() -> None:
+    # Разметка неразборчивости описывает документ, отказ страницы — обработку.
+    # Пересечение словарей означало бы, что одно и то же состояние выражается
+    # двумя способами, и один из них схема принять не сможет.
+    assert not {reason.value for reason in IllegibleReason} & {
+        reason.value for reason in PageFailureReason
     }
 
 
-def test_handwriting_is_a_content_reason_not_a_technical_one() -> None:
-    assert not IllegibleReason.HANDWRITING.is_technical, (
-        "рукопись помечается неразборчивой, это не сбой обработки"
-    )
+def test_handwriting_is_an_illegible_reason_not_a_page_failure() -> None:
+    assert IllegibleReason.HANDWRITING.value not in {
+        reason.value for reason in PageFailureReason
+    }, "рукопись помечается неразборчивой, это не сбой обработки"
 
 
 def test_processing_stage_covers_whole_pipeline() -> None:

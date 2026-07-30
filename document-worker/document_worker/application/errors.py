@@ -249,6 +249,29 @@ class SchemaMisconfiguredError(PermanentError):
     code: ClassVar[str] = "schema_misconfigured"
 
 
+class DuplicateRecordError(PermanentError):
+    """Нарушена уникальность.
+
+    Ожидаемые дубли гасит ON CONFLICT, поэтому долетевший сюда конфликт
+    означает нарушенный инвариант, а не повторную доставку.
+    """
+
+    code: ClassVar[str] = "duplicate_record"
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        constraint: str | None = None,
+        context: Mapping[str, object] | None = None,
+    ) -> None:
+        """Создаёт ошибку с именем нарушенного ограничения."""
+        merged: dict[str, object] = {"constraint": constraint}
+        merged.update(context or {})
+        super().__init__(message, context=merged)
+        self.constraint = constraint
+
+
 class PageRenderError(PageLevelError):
     """Страницу не удалось отрендерить."""
 

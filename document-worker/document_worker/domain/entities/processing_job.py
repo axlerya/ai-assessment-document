@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Final, Self
 from document_worker.domain.errors import InvalidStatusTransition, InvariantViolation
 from document_worker.domain.value_objects.enums import (
     CompletionOutcome,
+    ExtractionMethod,
     JobStatus,
     PageStatus,
 )
@@ -70,8 +71,13 @@ class ProcessingJob:
     started_at: datetime | None = None
     finished_at: datetime | None = None
     pages_total: int | None = None
-    pages_done: int = 0
+    # Разбиение по способам, а не один счётчик: событие и строка прогона
+    # требуют именно его, а вывести способ из числа готовых страниц нельзя.
+    pages_text_layer: int = 0
+    pages_ocr: int = 0
+    pages_hybrid: int = 0
     pages_failed: int = 0
+    chunks_created: int = 0
     result_status: DocumentStatus | None = None
     error_code: str | None = None
     error_message: str | None = None
@@ -115,6 +121,11 @@ class ProcessingJob:
         """Завершён ли прогон."""
         return self.status in _TERMINAL_STATUSES
 
+    @property
+    def pages_done(self) -> int:
+        """Сколько страниц прочитано любым способом."""
+        return self.pages_text_layer + self.pages_ocr + self.pages_hybrid
+
     def start(self, *, now: datetime) -> None:
         """Берёт прогон в работу.
 
@@ -150,16 +161,26 @@ class ProcessingJob:
             )
         self.pages_total = total
 
-    def register_page(self, status: PageStatus) -> None:
+    def register_page(self, status: PageStatus, method: ExtractionMethod) -> None:
         """Учитывает результат одной страницы.
 
         Raises:
-            InvariantViolation: Учтено больше страниц, чем объявлено.
+            InvariantViolation: Учтено больше страниц, чем объявлено, или
+                способ извлечения противоречит статусу страницы.
         """
-        if status is PageStatus.FAILED:
+        if (method is ExtractionMethod.NONE) != (status is PageStatus.FAILED):
+            raise InvariantViolation(
+                "отсутствие способа и статус failed это одно и то же состояние",
+                context={"method": method.value, "status": status.value},
+            )
+        if method is ExtractionMethod.NONE:
             self.pages_failed += 1
+        elif method is ExtractionMethod.TEXT_LAYER:
+            self.pages_text_layer += 1
+        elif method is ExtractionMethod.OCR:
+            self.pages_ocr += 1
         else:
-            self.pages_done += 1
+            self.pages_hybrid += 1
         if self.pages_total is not None and (
             self.pages_done + self.pages_failed > self.pages_total
         ):
