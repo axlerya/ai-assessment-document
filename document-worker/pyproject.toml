@@ -19,7 +19,7 @@ requires = ["hatchling>=1.27"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/document_worker"]
+packages = ["document_worker"]
 
 [tool.uv]
 required-version = ">=0.9.26"
@@ -42,7 +42,7 @@ typing = ["mypy>=2.3.0"]
 [tool.ruff]
 target-version = "py312"
 line-length = 88                       # ADR-0009
-src = ["src", "tests"]
+src = [".", "tests"]
 extend-exclude = ["migrations/versions"]
 
 [tool.ruff.lint]
@@ -74,7 +74,7 @@ runtime-evaluated-decorators = ["faststream.asgi.get", "faststream.asgi.post"]
                    "INP001"]
 "migrations/**/*.py" = ["INP001", "D", "ERA001"]
 "scripts/**/*.py" = ["INP001", "T201"]
-"src/document_worker/bootstrap/**/*.py" = ["PLR0913"]   # composition root: много параметров — норма
+"document_worker/bootstrap/**/*.py" = ["PLR0913"]   # composition root: много параметров — норма
 
 [tool.ruff.format]
 docstring-code-format = true
@@ -83,7 +83,6 @@ docstring-code-line-length = 72
 [tool.mypy]
 python_version = "3.12"
 strict = true
-mypy_path = "src"
 packages = ["document_worker"]
 plugins = ["pydantic.mypy"]
 namespace_packages = true
@@ -204,7 +203,7 @@ markers = [
 filterwarnings = ["error"]
 
 [tool.coverage.run]
-source = ["src/document_worker"]
+source = ["document_worker"]
 branch = true
 parallel = true
 concurrency = ["thread"]   # "greenlet" добавляется вместе с sqlalchemy[asyncio] на этапе 8

@@ -44,7 +44,7 @@ jobs:
           enable-cache: true
           cache-dependency-glob: "document-worker/uv.lock"
       - run: uv sync --frozen
-      - run: uv run mypy --strict src tests
+      - run: uv run mypy --strict document_worker tests
 
   arch:
     name: Границы слоёв и зависимости
@@ -60,7 +60,7 @@ jobs:
       - name: Контракты import-linter
         run: uv run lint-imports --show-timings
       - name: Неиспользуемые и необъявленные зависимости
-        run: uv run deptry src
+        run: uv run deptry document_worker
       - name: Известные уязвимости в зависимостях
         run: uv run pip-audit
 

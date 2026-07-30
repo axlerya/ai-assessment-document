@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 pytestmark = pytest.mark.unit
 
 SERVICE_ROOT = Path(__file__).resolve().parents[2]
-PACKAGE_ROOT = SERVICE_ROOT / "src" / "document_worker"
+PACKAGE_ROOT = SERVICE_ROOT / "document_worker"
 LAYER_PACKAGES = (
     "domain",
     "application",
