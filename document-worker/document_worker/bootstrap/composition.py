@@ -34,12 +34,18 @@ from document_worker.application.use_cases.process_document import ProcessDocume
 from document_worker.application.use_cases.process_document_page import (
     ProcessDocumentPage,
 )
+from document_worker.application.use_cases.publish_outbox_events import (
+    PublishOutboxEvents,
+)
 from document_worker.domain.normalization.normalizer import TextNormalizer
 from document_worker.domain.policies.document_status import DocumentStatusPolicy
 from document_worker.domain.policies.text_layer_quality import TextLayerQualityPolicy
 from document_worker.infrastructure.cpu.executor import CpuPool
 from document_worker.infrastructure.messaging.broker import build_broker
 from document_worker.infrastructure.messaging.declare import declare_topology
+from document_worker.infrastructure.messaging.outbox_publisher import (
+    RabbitEventPublisher,
+)
 from document_worker.infrastructure.messaging.retry_publisher import RetryPublisher
 from document_worker.infrastructure.messaging.topology import (
     RETRY_LADDER,
@@ -86,6 +92,7 @@ class Services:
     broker: RabbitBroker
     router: RabbitRouter
     process_document: ProcessDocument
+    publish_outbox: PublishOutboxEvents
 
 
 @contextlib.asynccontextmanager
@@ -178,6 +185,17 @@ async def build_services(settings: AppSettings) -> AsyncIterator[Services]:
             broker=broker,
             router=router,
             process_document=process_document,
+            publish_outbox=PublishOutboxEvents(
+                uow_factory=uow_factory,
+                publisher=RabbitEventPublisher(
+                    broker=broker,
+                    exchange=topology.events,
+                    publish_timeout_s=settings.rabbit.publish_timeout_s,
+                ),
+                clock=clock,
+                config=config.outbox,
+                lease_owner=settings.messaging.consumer_name,
+            ),
         )
 
 

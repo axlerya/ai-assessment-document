@@ -146,6 +146,15 @@ class OutboxRecordDTO:
 
 
 @dataclass(frozen=True, slots=True)
+class PublishOutboxEventsResult:
+    """Итог одного прохода публикатора."""
+
+    fetched: int
+    published: int
+    failed: int
+
+
+@dataclass(frozen=True, slots=True)
 class ProcessDocumentPageResult:
     """Итог одной страницы."""
 

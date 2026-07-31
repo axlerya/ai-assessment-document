@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import timedelta
 from typing import TYPE_CHECKING
 
 from document_worker.domain.constants import (
@@ -112,6 +113,15 @@ class OutboxConfig:
     lease_seconds: int = 30
     backoff_base_s: float = 1.0
     backoff_cap_s: float = 300.0
+
+    def backoff_for(self, attempts: int) -> timedelta:
+        """Отсрочка следующей попытки публикации.
+
+        Растёт вдвое с каждой неудачей и упирается в потолок: без него
+        недоступный сутки брокер отодвинул бы событие на годы.
+        """
+        seconds = self.backoff_base_s * 2 ** max(attempts, 0)
+        return timedelta(seconds=min(seconds, self.backoff_cap_s))
 
     def __post_init__(self) -> None:
         """Проверяет размеры пачки, лиза и границы backoff."""
