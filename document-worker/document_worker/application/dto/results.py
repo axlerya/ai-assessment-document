@@ -45,6 +45,13 @@ class MessageOutcome(StrEnum):
     FAILED = "failed"
 
 
+class TerminalOutcome(StrEnum):
+    """Записан ли терминальный результат или его уже записал другой воркер."""
+
+    APPLIED = "applied"
+    DUPLICATE = "duplicate"
+
+
 @dataclass(frozen=True, slots=True)
 class MessageClaimDTO:
     """Заявка на обработку сообщения."""
@@ -150,6 +157,26 @@ class ProcessDocumentPageResult:
     char_count: int
     failure_reason: PageFailureReason | None
     persisted: bool
+
+
+@dataclass(frozen=True, slots=True)
+class CompleteDocumentProcessingResult:
+    """Итог терминальной транзакции успеха."""
+
+    terminal: TerminalOutcome
+    status: DocumentStatus
+    event_type: str | None
+    events_enqueued: int
+    pages_total: int
+    pages_failed: int
+
+
+@dataclass(frozen=True, slots=True)
+class FailDocumentProcessingResult:
+    """Итог терминальной транзакции отказа."""
+
+    terminal: TerminalOutcome
+    events_enqueued: int = 0
 
 
 @dataclass(frozen=True, slots=True)

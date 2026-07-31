@@ -208,7 +208,7 @@ def test_declare_pages_conflicting_value_raises() -> None:
 
 
 def test_record_pages_splits_counters_by_extraction_method() -> None:
-    job = _running()
+    job = _running(pages=None)
     job.declare_pages(4)
 
     job.record_pages(text_layer=1, ocr=1, hybrid=1, failed=1)
@@ -224,7 +224,6 @@ def test_record_pages_replaces_the_running_tally() -> None:
     # Итог считается по сохранённым страницам, а не по тому, что успел
     # насчитать прогресс: воркер мог продолжить чужую работу.
     job = _running()
-    job.declare_pages(2)
     job.record_pages(text_layer=1, ocr=0, hybrid=0, failed=0)
 
     job.record_pages(text_layer=2, ocr=0, hybrid=0, failed=0)
@@ -233,7 +232,7 @@ def test_record_pages_replaces_the_running_tally() -> None:
 
 
 def test_record_pages_beyond_declared_total_raises() -> None:
-    job = _running()
+    job = _running(pages=None)
     job.declare_pages(1)
 
     with pytest.raises(InvariantViolation):

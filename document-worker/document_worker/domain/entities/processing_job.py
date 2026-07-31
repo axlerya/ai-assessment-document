@@ -11,12 +11,7 @@ from datetime import UTC
 from typing import TYPE_CHECKING, Final, Self
 
 from document_worker.domain.errors import InvalidStatusTransition, InvariantViolation
-from document_worker.domain.value_objects.enums import (
-    CompletionOutcome,
-    ExtractionMethod,
-    JobStatus,
-    PageStatus,
-)
+from document_worker.domain.value_objects.enums import CompletionOutcome, JobStatus
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -161,37 +156,32 @@ class ProcessingJob:
             )
         self.pages_total = total
 
-    def register_page(self, status: PageStatus, method: ExtractionMethod) -> None:
-        """Учитывает результат одной страницы.
+    def record_pages(
+        self,
+        *,
+        text_layer: int,
+        ocr: int,
+        hybrid: int,
+        failed: int,
+    ) -> None:
+        """Ставит счётчики страниц по фактически сохранённым.
+
+        Именно постановка, а не приращение: итог считается по строкам страниц,
+        а не по тому, что успел насчитать прогресс живого прогона.
 
         Raises:
-            InvariantViolation: Учтено больше страниц, чем объявлено, или
-                способ извлечения противоречит статусу страницы.
+            InvariantViolation: Страниц больше, чем объявлено.
         """
-        if (method is ExtractionMethod.NONE) != (status is PageStatus.FAILED):
-            raise InvariantViolation(
-                "отсутствие способа и статус failed это одно и то же состояние",
-                context={"method": method.value, "status": status.value},
-            )
-        if method is ExtractionMethod.NONE:
-            self.pages_failed += 1
-        elif method is ExtractionMethod.TEXT_LAYER:
-            self.pages_text_layer += 1
-        elif method is ExtractionMethod.OCR:
-            self.pages_ocr += 1
-        else:
-            self.pages_hybrid += 1
-        if self.pages_total is not None and (
-            self.pages_done + self.pages_failed > self.pages_total
-        ):
+        counted = text_layer + ocr + hybrid + failed
+        if self.pages_total is not None and counted > self.pages_total:
             raise InvariantViolation(
                 "учтено больше страниц, чем объявлено",
-                context={
-                    "done": self.pages_done,
-                    "failed": self.pages_failed,
-                    "total": self.pages_total,
-                },
+                context={"counted": counted, "total": self.pages_total},
             )
+        self.pages_text_layer = text_layer
+        self.pages_ocr = ocr
+        self.pages_hybrid = hybrid
+        self.pages_failed = failed
 
     def succeed(self, *, result: DocumentStatus, now: datetime) -> CompletionOutcome:
         """Завершает прогон успехом.

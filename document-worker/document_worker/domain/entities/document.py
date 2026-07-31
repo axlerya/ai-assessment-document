@@ -10,7 +10,7 @@ worker её только захватывает и дописывает свои
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC
 from typing import TYPE_CHECKING
 
@@ -46,7 +46,11 @@ if TYPE_CHECKING:
         DocumentQualityStats,
         DocumentStatusVerdict,
     )
-    from document_worker.domain.value_objects.storage import SourceFile
+    from document_worker.domain.value_objects.storage import (
+        Checksum,
+        FileSize,
+        SourceFile,
+    )
     from document_worker.domain.value_objects.versioning import PipelineVersion
 
 _MILLISECONDS_IN_SECOND = 1000
@@ -138,6 +142,18 @@ class Document:
         self.failure_code = None
         self.failure_message = None
         self.failure_stage = None
+
+    def record_source(self, *, size: FileSize, checksum: Checksum) -> None:
+        """Записывает то, что выяснилось о файле после скачивания.
+
+        Строку создаёт сервис приёма файлов, фактических размера и суммы он не
+        знает, а без них успешный документ не сохранить.
+
+        Raises:
+            ChecksumMismatch: Фактическая сумма не совпала с заявленной.
+        """
+        self.source.verify(checksum)
+        self.source = replace(self.source, size=size, checksum=checksum)
 
     def declare_page_count(self, value: int) -> None:
         """Объявляет число страниц документа.
