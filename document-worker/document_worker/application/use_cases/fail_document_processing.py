@@ -14,7 +14,10 @@ from document_worker.application.dto.results import (
     MessageOutcome,
     TerminalOutcome,
 )
-from document_worker.application.errors import DocumentNotFoundError
+from document_worker.application.errors import (
+    DocumentNotFoundError,
+    DomainInvariantViolationError,
+)
 from document_worker.application.services.terminal import write_terminal_state
 
 if TYPE_CHECKING:
@@ -28,6 +31,7 @@ if TYPE_CHECKING:
         UnitOfWorkFactory,
     )
     from document_worker.domain.entities.document import Document
+    from document_worker.domain.entities.processing_job import ProcessingJob
 
 
 @dataclass(frozen=True, slots=True)
@@ -57,24 +61,8 @@ class FailDocumentProcessing:
                     "документ исчез во время обработки",
                     context={"document_id": str(command.document_id)},
                 )
-            if self._is_terminal(document):
-                return await self._duplicate(uow, command, now)
-
-            job = await uow.jobs.get(document.id, self.config.pipeline_version)
-            document.fail(
-                code=command.error_code,
-                message=command.error_message,
-                stage=command.stage,
-                now=now,
-                pages_persisted=command.pages_persisted,
-            )
-            if job is not None:
-                job.fail(
-                    code=command.error_code,
-                    message=command.error_message,
-                    stage=command.stage,
-                    now=now,
-                )
+            job = await self._job_of(uow, document)
+            self._apply(document, job, command, now)
             written = await write_terminal_state(
                 uow,
                 document=document,
@@ -84,6 +72,7 @@ class FailDocumentProcessing:
                 now=now,
             )
             if not written.applied:
+                # Документ уже завершён, и переписывать его результат нельзя.
                 return await self._duplicate(uow, command, now)
             await uow.commit()
             return FailDocumentProcessingResult(
@@ -91,10 +80,36 @@ class FailDocumentProcessing:
                 events_enqueued=written.events_enqueued,
             )
 
-    def _is_terminal(self, document: Document) -> bool:
-        return (
-            document.status.is_terminal
-            and document.pipeline_version == self.config.pipeline_version
+    async def _job_of(self, uow: UnitOfWork, document: Document) -> ProcessingJob:
+        job = await uow.jobs.get(document.id, self.config.pipeline_version)
+        if job is None:
+            raise DomainInvariantViolationError(
+                "прогон обработки документа не найден",
+                context={"document_id": str(document.id)},
+            )
+        return job
+
+    def _apply(
+        self,
+        document: Document,
+        job: ProcessingJob,
+        command: FailDocumentProcessingCommand,
+        now: datetime,
+    ) -> None:
+        # На уже завершённом документе оба перехода — no-op: расхождение с
+        # хранимым состоянием ловит guard-UPDATE.
+        document.fail(
+            code=command.error_code,
+            message=command.error_message,
+            stage=command.stage,
+            now=now,
+            pages_persisted=command.pages_persisted,
+        )
+        job.fail(
+            code=command.error_code,
+            message=command.error_message,
+            stage=command.stage,
+            now=now,
         )
 
     async def _duplicate(

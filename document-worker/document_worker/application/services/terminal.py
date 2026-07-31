@@ -36,7 +36,7 @@ async def write_terminal_state(  # noqa: PLR0913 — транзакция пиш
     uow: UnitOfWork,
     *,
     document: Document,
-    job: ProcessingJob | None,
+    job: ProcessingJob,
     event_id: EventId,
     outcome: MessageOutcome,
     now: datetime,
@@ -44,8 +44,7 @@ async def write_terminal_state(  # noqa: PLR0913 — транзакция пиш
     """Пишет терминальное состояние документа и всё, что идёт вместе с ним."""
     if not await uow.documents.finish(document, expected=DocumentStatus.PROCESSING):
         return TerminalWriteResult(applied=False)
-    if job is not None:
-        await uow.jobs.finish(job, expected=JobStatus.RUNNING)
+    await uow.jobs.finish(job, expected=JobStatus.RUNNING)
     enqueued = await uow.outbox.enqueue(
         [to_outbox_event(event) for event in document.pull_events()]
     )

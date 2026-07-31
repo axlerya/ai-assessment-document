@@ -165,7 +165,7 @@ def _raster_area_ratio(
     images: Sequence[dict[str, Any]], width: float, height: float
 ) -> float:
     page_area = width * height
-    if page_area <= 0:
+    if not images or page_area <= 0:
         return 0.0
     covered = sum(
         max(0.0, min(float(image["x1"]), width) - max(float(image["x0"]), 0.0))

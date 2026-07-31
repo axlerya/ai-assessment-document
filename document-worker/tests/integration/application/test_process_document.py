@@ -6,7 +6,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, fields
+from dataclasses import dataclass, fields, replace
 from typing import TYPE_CHECKING
 
 import pytest
@@ -14,6 +14,7 @@ import pytest
 from document_worker.application.dto.commands import ProcessDocumentCommand
 from document_worker.application.errors import (
     ConcurrentProcessingError,
+    ProcessingDeadlineExceededError,
     StorageUnavailableError,
     UnsupportedMediaTypeError,
 )
@@ -49,7 +50,7 @@ from document_worker.infrastructure.persistence.mappers.document import document
 from document_worker.infrastructure.storage.temp_workspace import (
     TempDirWorkspaceFactory,
 )
-from tests.factories import make_document
+from tests.factories import make_document, make_text_layer_page
 from tests.fakes import pdf_builder
 from tests.fakes.storage import InMemoryObjectStorage
 from tests.fakes.watch import (
@@ -78,6 +79,7 @@ MAX_PIXELS = 4_000_000
 # Политика считает документ короче двухсот символов «без извлекаемого текста»,
 # а на страницу построителя приходится сто с небольшим.
 PAGES = 3
+LONG_TEXT = "договор поставки товаров и услуг между сторонами настоящего дела " * 4
 
 
 @dataclass(frozen=True, slots=True)
@@ -273,18 +275,22 @@ async def test_resumed_delivery_processes_only_missing_pages(  # noqa: PLR0913, 
     config: ProcessingConfig,
     tmp_path: Path,
 ) -> None:
-    # Первая доставка успела сохранить страницы и не успела завершить документ;
-    # вторая обязана дочитать остаток, а не начать сначала.
+    # Первый воркер успел сохранить страницу и пропал, не завершив документ.
+    # Второй обязан дочитать остаток, а не начать сначала.
     document = await _document_with_source(session, wiring, tmp_path)
     command = _command(document)
-    await wiring.process.execute(command)
+    await wiring.process.claim_service.claim(command)
+    async with uow_factory(statement_timeout_ms=1000) as uow:
+        await uow.pages.add(make_text_layer_page(document, number=1, content=LONG_TEXT))
+        await uow.commit()
     clock.advance(seconds=config.claim_lease_s + 1)
     wiring.watch.calls.clear()
 
-    await wiring.process.execute(command)
+    result = await wiring.process.execute(command)
 
+    assert result.status is DocumentStatus.PROCESSED
     assert await _pages_of(uow_factory, document) == PAGES
-    assert "pdf.read_page" not in wiring.watch.calls
+    assert result.pages_processed == PAGES - 1
 
 
 async def test_live_lease_of_another_worker_is_a_transient_error(
@@ -292,11 +298,15 @@ async def test_live_lease_of_another_worker_is_a_transient_error(
     wiring: Wiring,
     tmp_path: Path,
 ) -> None:
+    # Брокер передоставил сообщение, пока первый воркер ещё работает: его лиз
+    # жив, и попытка расходуется намеренно — иначе зависший воркер гонял бы
+    # сообщение по первой ступени retry без предела.
     document = await _document_with_source(session, wiring, tmp_path)
-    await wiring.process.execute(_command(document))
+    command = _command(document)
+    await wiring.process.claim_service.claim(command)
 
     with pytest.raises(ConcurrentProcessingError):
-        await wiring.process.execute(_command(document))
+        await wiring.process.execute(command)
 
 
 async def test_permanent_error_fails_the_document_without_reraising(
@@ -422,3 +432,22 @@ async def test_scanned_document_ends_failed_until_recognition_arrives(
             document.id, PIPELINE_VERSION, statuses=frozenset({PageStatus.FAILED})
         )
     assert len(pages) == 1
+
+
+async def test_processing_beyond_the_deadline_is_a_transient_error(
+    session: AsyncSession,
+    wiring: Wiring,
+    uow_factory: UnitOfWorkFactory,
+    config: ProcessingConfig,
+    tmp_path: Path,
+) -> None:
+    # Общий бюджет документа кончился: сохранённые страницы остаются, следующая
+    # доставка продолжит с них, а в failed документ не уходит.
+    document = await _document_with_source(session, wiring, tmp_path)
+    impatient = replace(wiring.process, config=replace(config, document_timeout_s=1e-6))
+
+    with pytest.raises(ProcessingDeadlineExceededError):
+        await impatient.execute(_command(document))
+
+    stored = await _stored(uow_factory, document)
+    assert stored.status is DocumentStatus.PROCESSING

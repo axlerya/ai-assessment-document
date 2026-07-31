@@ -16,6 +16,7 @@ from document_worker.application.dto.results import (
 )
 from document_worker.application.errors import (
     DocumentNotFoundError,
+    DomainInvariantViolationError,
     translate_domain_error,
 )
 from document_worker.application.services.terminal import write_terminal_state
@@ -53,6 +54,9 @@ EVENT_TYPE_BY_STATUS: Final[Mapping[DocumentStatus, str]] = {
     DocumentStatus.FAILED: DocumentProcessingFailed.event_type,
 }
 
+REASON_NO_USABLE_PAGES: Final[str] = "no_usable_pages"
+NO_USABLE_TEXT: Final[str] = "пригодного текста в документе не оказалось"
+
 OUTCOME_BY_STATUS: Final[Mapping[DocumentStatus, MessageOutcome]] = {
     DocumentStatus.PROCESSED: MessageOutcome.PROCESSED,
     DocumentStatus.PARTIALLY_PROCESSED: MessageOutcome.PARTIALLY_PROCESSED,
@@ -88,9 +92,6 @@ class CompleteDocumentProcessing:
                     "документ исчез во время обработки",
                     context={"document_id": str(command.document_id)},
                 )
-            if self._is_terminal(document):
-                return await self._duplicate(uow, document, command, now)
-
             summaries = await uow.pages.list_summaries(
                 document.id, self.config.pipeline_version
             )
@@ -99,8 +100,8 @@ class CompleteDocumentProcessing:
                 [_outcome_of(summary) for summary in summaries],
                 declared_page_count=document.page_count,
             )
-            job = await uow.jobs.get(document.id, self.config.pipeline_version)
-            self._apply(document, job, verdict, command, now)
+            job = await self._job_of(uow, document)
+            self._transition(document, job, verdict, command, now)
             written = await write_terminal_state(
                 uow,
                 document=document,
@@ -110,8 +111,8 @@ class CompleteDocumentProcessing:
                 now=now,
             )
             if not written.applied:
-                stored = await uow.documents.get(command.document_id)
-                return await self._duplicate(uow, stored or document, command, now)
+                # Документ завершил кто-то другой: его результат не переписывают.
+                return await self._duplicate(uow, document, command, now)
             await uow.commit()
             return CompleteDocumentProcessingResult(
                 terminal=TerminalOutcome.APPLIED,
@@ -122,11 +123,14 @@ class CompleteDocumentProcessing:
                 pages_failed=verdict.stats.pages_failed_status,
             )
 
-    def _is_terminal(self, document: Document) -> bool:
-        return (
-            document.status.is_terminal
-            and document.pipeline_version == self.config.pipeline_version
-        )
+    async def _job_of(self, uow: UnitOfWork, document: Document) -> ProcessingJob:
+        job = await uow.jobs.get(document.id, self.config.pipeline_version)
+        if job is None:
+            raise DomainInvariantViolationError(
+                "прогон обработки документа не найден",
+                context={"document_id": str(document.id)},
+            )
+        return job
 
     def _record_facts(
         self,
@@ -141,45 +145,57 @@ class CompleteDocumentProcessing:
         except DomainError as error:
             raise translate_domain_error(error) from error
 
-    def _apply(
+    def _transition(
         self,
         document: Document,
-        job: ProcessingJob | None,
+        job: ProcessingJob,
         verdict: DocumentStatusVerdict,
         command: CompleteDocumentProcessingCommand,
         now: datetime,
     ) -> None:
-        if job is not None:
-            job.declare_pages(command.page_count)
-            stats = verdict.stats
-            job.record_pages(
-                text_layer=stats.pages_text_layer,
-                ocr=stats.pages_ocr,
-                hybrid=stats.pages_hybrid,
-                failed=stats.pages_failed,
-            )
+        try:
+            self._apply(document, job, verdict, command, now)
+        except DomainError as error:
+            raise translate_domain_error(error) from error
+
+    def _apply(
+        self,
+        document: Document,
+        job: ProcessingJob,
+        verdict: DocumentStatusVerdict,
+        command: CompleteDocumentProcessingCommand,
+        now: datetime,
+    ) -> None:
+        # На уже завершённом документе все переходы ниже — no-op: так домен и
+        # устроен, а разошедшееся состояние ловит guard-UPDATE.
+        stats = verdict.stats
+        job.declare_pages(command.page_count)
+        job.record_pages(
+            text_layer=stats.pages_text_layer,
+            ocr=stats.pages_ocr,
+            hybrid=stats.pages_hybrid,
+            failed=stats.pages_failed,
+        )
         if verdict.status.is_successful:
             document.complete(verdict, chunks_total=command.chunks_total, now=now)
-            if job is not None:
-                job.succeed(result=verdict.status, now=now)
+            job.succeed(result=verdict.status, now=now)
             return
         # Страницы обработаны все, но читать в документе нечего: это отказ
         # с причиной от политики, а не сбой обработки.
-        reason = verdict.reasons[0] if verdict.reasons else "no_usable_pages"
+        reason = verdict.reasons[0] if verdict.reasons else REASON_NO_USABLE_PAGES
         document.fail(
             code=reason,
-            message="пригодного текста в документе не оказалось",
+            message=NO_USABLE_TEXT,
             stage=ProcessingStage.TEXT_EXTRACTION,
             now=now,
-            pages_persisted=verdict.stats.pages_total,
+            pages_persisted=stats.pages_total,
         )
-        if job is not None:
-            job.fail(
-                code=reason,
-                message="пригодного текста в документе не оказалось",
-                stage=ProcessingStage.TEXT_EXTRACTION,
-                now=now,
-            )
+        job.fail(
+            code=reason,
+            message=NO_USABLE_TEXT,
+            stage=ProcessingStage.TEXT_EXTRACTION,
+            now=now,
+        )
 
     async def _duplicate(
         self,

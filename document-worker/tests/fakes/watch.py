@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import contextlib
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
@@ -20,8 +20,15 @@ if TYPE_CHECKING:
         PdfPageTextDTO,
         TextLayerProbeDTO,
     )
-    from document_worker.application.ports.object_storage import ObjectStatDTO
-    from document_worker.application.ports.pdf import PdfDocumentReader, PdfInspector
+    from document_worker.application.ports.object_storage import (
+        ObjectStatDTO,
+        ObjectStorage,
+    )
+    from document_worker.application.ports.pdf import (
+        PdfDocumentReader,
+        PdfHandle,
+        PdfInspector,
+    )
     from document_worker.application.ports.unit_of_work import (
         UnitOfWork,
         UnitOfWorkFactory,
@@ -68,7 +75,7 @@ class TransactionWatch:
 class WatchedStorage:
     """Хранилище объектов, докладывающее о своих вызовах."""
 
-    inner: Any
+    inner: ObjectStorage
     watch: TransactionWatch
 
     async def stat(self, ref: ObjectRef) -> ObjectStatDTO:
@@ -118,7 +125,7 @@ class WatchedInspector:
 class WatchedHandle:
     """Открытый документ, докладывающий о чтении страниц."""
 
-    inner: Any
+    inner: PdfHandle
     watch: TransactionWatch
 
     async def read_page_text(self, number: int) -> PdfPageTextDTO:

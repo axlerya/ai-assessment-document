@@ -19,7 +19,11 @@ from document_worker.application.dto.commands import (
     ProcessDocumentCommand,
 )
 from document_worker.application.dto.results import TerminalOutcome
-from document_worker.application.errors import DocumentNotFoundError
+from document_worker.application.errors import (
+    CorruptedDocumentError,
+    DocumentNotFoundError,
+    DomainInvariantViolationError,
+)
 from document_worker.application.services.message_claim import MessageClaimService
 from document_worker.application.use_cases.complete_document_processing import (
     CompleteDocumentProcessing,
@@ -38,7 +42,7 @@ from document_worker.domain.value_objects.enums import (
     JobStatus,
     ProcessingStage,
 )
-from document_worker.domain.value_objects.identifiers import DocumentId, EventId
+from document_worker.domain.value_objects.identifiers import DocumentId, EventId, JobId
 from document_worker.domain.value_objects.storage import Checksum, FileSize
 from document_worker.infrastructure.persistence.mappers.document import document_to_row
 from tests.factories import (
@@ -497,3 +501,98 @@ async def test_failure_closes_the_message(
         )
     )
     assert not second.should_process
+
+
+async def test_completion_of_an_empty_document_is_a_permanent_error(
+    session: AsyncSession,
+    claim_service: MessageClaimService,
+    complete: CompleteDocumentProcessing,
+) -> None:
+    # Инспектор такой документ не пропускает, но нарушенный инвариант домена
+    # обязан долетать прикладной неисправимой ошибкой, а не доменной.
+    claimed = await _claim(session, claim_service)
+
+    with pytest.raises(CorruptedDocumentError):
+        await complete.execute(claimed.completion(page_count=0))
+
+
+async def test_completion_with_more_pages_than_declared_is_a_permanent_error(
+    session: AsyncSession,
+    claim_service: MessageClaimService,
+    complete: CompleteDocumentProcessing,
+    uow_factory: UnitOfWorkFactory,
+) -> None:
+    # Сохранённых страниц больше, чем насчитал инспектор: числа разошлись,
+    # и записывать такой прогон нельзя.
+    claimed = await _claim(session, claim_service)
+    await _add_two_read_pages(uow_factory, claimed.document)
+
+    with pytest.raises(DomainInvariantViolationError):
+        await complete.execute(claimed.completion(page_count=1))
+
+
+async def test_completion_without_a_job_is_an_invariant_violation(
+    session: AsyncSession,
+    complete: CompleteDocumentProcessing,
+    uow_factory: UnitOfWorkFactory,
+) -> None:
+    # Прогон открывается захватом, и его отсутствие означает сломанное
+    # состояние, а не штатную ветку.
+    document = make_document(status=DocumentStatus.PROCESSING)
+    session.add(document_to_row(document))
+    await session.commit()
+    command = CompleteDocumentProcessingCommand(
+        document_id=document.id,
+        correlation_id=document.correlation_id,
+        event_id=EventId.generate(),
+        job_id=JobId(uuid.uuid4()),
+        page_count=1,
+        chunks_total=0,
+        source_size=SOURCE_SIZE,
+        source_checksum=SOURCE_CHECKSUM,
+    )
+    del uow_factory
+
+    with pytest.raises(DomainInvariantViolationError):
+        await complete.execute(command)
+
+
+async def test_failure_of_a_missing_document_raises_not_found(
+    session: AsyncSession,
+    claim_service: MessageClaimService,
+    fail: FailDocumentProcessing,
+) -> None:
+    claimed = await _claim(session, claim_service)
+    vanished = FailDocumentProcessingCommand(
+        document_id=DocumentId(uuid.uuid4()),
+        correlation_id=claimed.document.correlation_id,
+        event_id=claimed.event_id,
+        job_id=claimed.job.id,
+        error_code="corrupted_document",
+        error_message="файл не читается",
+        stage=ProcessingStage.TEXT_EXTRACTION,
+    )
+
+    with pytest.raises(DocumentNotFoundError):
+        await fail.execute(vanished)
+
+
+async def test_failure_without_a_job_is_an_invariant_violation(
+    session: AsyncSession,
+    fail: FailDocumentProcessing,
+) -> None:
+    document = make_document(status=DocumentStatus.PROCESSING)
+    session.add(document_to_row(document))
+    await session.commit()
+    command = FailDocumentProcessingCommand(
+        document_id=document.id,
+        correlation_id=document.correlation_id,
+        event_id=EventId.generate(),
+        job_id=JobId(uuid.uuid4()),
+        error_code="corrupted_document",
+        error_message="файл не читается",
+        stage=ProcessingStage.TEXT_EXTRACTION,
+    )
+
+    with pytest.raises(DomainInvariantViolationError):
+        await fail.execute(command)

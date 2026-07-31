@@ -187,4 +187,7 @@ class ProcessDocumentResult:
     status: DocumentStatus
     pages_total: int
     chunks_total: int
+    # Страницы, прочитанные именно этим прогоном: на возобновлении их меньше,
+    # чем в документе, и по разнице видно, что возобновление сработало.
+    pages_processed: int = 0
     duplicate: bool = False

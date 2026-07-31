@@ -91,7 +91,7 @@ class FailDocumentProcessingCommand:
     document_id: DocumentId
     correlation_id: CorrelationId
     event_id: EventId
-    job_id: JobId | None
+    job_id: JobId
     error_code: str
     error_message: str
     stage: ProcessingStage
