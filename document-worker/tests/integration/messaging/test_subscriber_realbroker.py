@@ -55,7 +55,7 @@ if TYPE_CHECKING:
     from faststream.rabbit import RabbitBroker, RabbitExchange
 
     from document_worker.infrastructure.messaging.topology import Topology
-    from tests.integration.messaging.conftest import Management
+    from tests.integration.conftest import Management
 
 pytestmark = pytest.mark.integration
 
