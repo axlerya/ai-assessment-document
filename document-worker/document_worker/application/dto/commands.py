@@ -75,6 +75,7 @@ class CreateDocumentChunksCommand:
 
     document_id: DocumentId
     correlation_id: CorrelationId
+    job_id: JobId
 
 
 @dataclass(frozen=True, slots=True)

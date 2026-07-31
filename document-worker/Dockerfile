@@ -18,11 +18,18 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 
 COPY document_worker ./document_worker
 COPY migrations ./migrations
+COPY scripts ./scripts
 COPY alembic.ini ./
 # `--no-editable` обязателен: ссылка на исходники вместо копии оставляет
 # рабочий образ зависимым от каталога сборки.
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev --no-editable
+
+# Словарь BPE укладывается в образ здесь: сеть в рантайме запрещена, а первый
+# вызов токенизатора иначе полез бы её скачивать посреди обработки документа.
+ENV TIKTOKEN_CACHE_DIR=/opt/tiktoken-cache
+RUN uv run --no-dev --no-sync python scripts/prefetch_models.py \
+    && test -n "$(ls -A /opt/tiktoken-cache)"
 
 
 FROM python:3.12-slim-bookworm AS runtime
@@ -44,6 +51,7 @@ ENV PATH="/app/.venv/bin:$PATH" \
     # Библиотеки разбора PDF раскладывают работу по потокам сами, а мы уже
     # держим пул процессов: вложенный параллелизм только конкурирует за ядра.
     OMP_NUM_THREADS=1 \
+    TIKTOKEN_CACHE_DIR=/opt/tiktoken-cache \
     PROCESSING__TEMP_DIR=/tmp/document-worker
 
 WORKDIR /app
@@ -52,6 +60,7 @@ COPY --from=builder --chown=10001:10001 /app/.venv /app/.venv
 COPY --from=builder --chown=10001:10001 /app/document_worker /app/document_worker
 COPY --from=builder --chown=10001:10001 /app/migrations /app/migrations
 COPY --from=builder --chown=10001:10001 /app/alembic.ini /app/alembic.ini
+COPY --from=builder --chown=10001:10001 /opt/tiktoken-cache /opt/tiktoken-cache
 
 USER 10001:10001
 

@@ -142,6 +142,12 @@ class InvalidChunkingVersion(InvalidValueObject):
     code: ClassVar[str] = "invalid_chunking_version"
 
 
+class InvalidChunkingPolicy(InvariantViolation):
+    """Бюджет токенов противоречив или не соответствует объявленной версии."""
+
+    code: ClassVar[str] = "invalid_chunking_policy"
+
+
 class InvalidStatusTransition(InvariantViolation):
     """Переход статуса запрещён таблицей переходов."""
 

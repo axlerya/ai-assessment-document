@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 from datetime import timedelta
 from typing import TYPE_CHECKING
 
+from document_worker.domain.chunking.policy import DEFAULT_CHUNKING_POLICY
 from document_worker.domain.constants import (
     MAX_FILE_SIZE_BYTES,
     MAX_PAGES,
@@ -21,10 +22,8 @@ from document_worker.domain.errors import InvariantViolation
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
-    from document_worker.domain.value_objects.versioning import (
-        ChunkingVersion,
-        PipelineVersion,
-    )
+    from document_worker.domain.chunking.policy import ChunkingPolicy
+    from document_worker.domain.value_objects.versioning import PipelineVersion
 
 
 def _require_positive(value: float, name: str) -> None:
@@ -79,13 +78,6 @@ class OcrConfig:
         """Проверяет таймаут и число попыток."""
         _require_positive(self.page_timeout_s, "page_timeout_s")
         _require_positive(self.max_page_attempts, "max_page_attempts")
-
-
-@dataclass(frozen=True, slots=True)
-class ChunkingConfig:
-    """Версия чанкования; пороги размеров — поля доменной политики."""
-
-    chunking_version: ChunkingVersion
 
 
 @dataclass(frozen=True, slots=True)
@@ -146,6 +138,7 @@ class ProcessingConfig:
     claim_lease_s: int = 900
     source: SourceConfig = field(default_factory=SourceConfig)
     ocr: OcrConfig = field(default_factory=OcrConfig)
+    chunking: ChunkingPolicy = DEFAULT_CHUNKING_POLICY
     tx: TransactionConfig = field(default_factory=TransactionConfig)
     outbox: OutboxConfig = field(default_factory=OutboxConfig)
 

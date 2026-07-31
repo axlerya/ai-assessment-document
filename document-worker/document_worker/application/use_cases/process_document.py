@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Final
 
 from document_worker.application.dto.commands import (
     CompleteDocumentProcessingCommand,
+    CreateDocumentChunksCommand,
     ExtractDocumentTextCommand,
     FailDocumentProcessingCommand,
 )
@@ -48,6 +49,9 @@ if TYPE_CHECKING:
     from document_worker.application.use_cases.complete_document_processing import (
         CompleteDocumentProcessing,
     )
+    from document_worker.application.use_cases.create_document_chunks import (
+        CreateDocumentChunks,
+    )
     from document_worker.application.use_cases.extract_document_text import (
         ExtractDocumentText,
     )
@@ -65,6 +69,7 @@ class ProcessDocument:
     source_loader: SourceDocumentLoader
     extract_text: ExtractDocumentText
     page_runner: PageSequenceRunner
+    create_chunks: CreateDocumentChunks
     complete: CompleteDocumentProcessing
     fail: FailDocumentProcessing
     workspaces: TempWorkspaceFactory
@@ -110,6 +115,13 @@ class ProcessDocument:
         async with self.workspaces(prefix=f"doc-{command.document_id}") as workspace:
             source = await self.source_loader.load(claim.document, workspace=workspace)
             page_count, run = await self._read_pages(command, claim, source)
+            chunks = await self.create_chunks.execute(
+                CreateDocumentChunksCommand(
+                    document_id=command.document_id,
+                    correlation_id=command.correlation_id,
+                    job_id=_job_id(claim),
+                )
+            )
             done = await self.complete.execute(
                 CompleteDocumentProcessingCommand(
                     document_id=command.document_id,
@@ -117,7 +129,7 @@ class ProcessDocument:
                     event_id=command.event_id,
                     job_id=_job_id(claim),
                     page_count=page_count,
-                    chunks_total=0,
+                    chunks_total=chunks.chunks_total,
                     source_size=source.size,
                     source_checksum=source.checksum,
                 )
@@ -126,7 +138,7 @@ class ProcessDocument:
             document_id=command.document_id,
             status=done.status,
             pages_total=done.pages_total,
-            chunks_total=0,
+            chunks_total=chunks.chunks_total,
             pages_processed=run.processed,
             duplicate=done.event_type is None,
         )

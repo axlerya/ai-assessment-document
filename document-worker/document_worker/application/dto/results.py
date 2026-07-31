@@ -189,6 +189,18 @@ class FailDocumentProcessingResult:
 
 
 @dataclass(frozen=True, slots=True)
+class CreateDocumentChunksResult:
+    """Итог чанкования документа.
+
+    Вставлено и всего — разные величины: на повторной доставке вставлено ноль,
+    а чанки у документа есть, и в событие уходит именно общее число.
+    """
+
+    chunks_created: int
+    chunks_total: int
+
+
+@dataclass(frozen=True, slots=True)
 class ProcessDocumentResult:
     """Итог обработки одного сообщения."""
 
