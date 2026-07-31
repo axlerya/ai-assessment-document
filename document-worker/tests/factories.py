@@ -100,14 +100,19 @@ def version_of(document: Document) -> PipelineVersion:
     return document.pipeline_version or PIPELINE_VERSION
 
 
-def make_text_layer_page(document: Document, *, number: int = 1) -> DocumentPage:
+def make_text_layer_page(
+    document: Document,
+    *,
+    number: int = 1,
+    content: str = PAGE_TEXT,
+) -> DocumentPage:
     """Страница из текстового слоя: уверенности нет, рендера нет."""
     return DocumentPage.from_text_layer(
         page_id=PageId(uuid.uuid4()),
         document_id=document.id,
         number=PageNumber(number),
         pipeline_version=version_of(document),
-        content=PAGE_TEXT,
+        content=content,
         now=NOW,
     )
 
