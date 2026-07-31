@@ -84,3 +84,24 @@ def test_image_size_stays_within_the_limit(image: str) -> None:
     size = json.loads(_docker("image", "inspect", image))[0]["Size"]
 
     assert size / BYTES_IN_MB < MAX_IMAGE_SIZE_MB
+
+
+def test_token_counter_works_without_network(image: str) -> None:
+    # Словарь BPE укладывается в образ на сборке: без прогрева первый же
+    # документ упёрся бы в недоступный интернет посреди обработки.
+    output = _docker(
+        "run",
+        "--rm",
+        "--network",
+        "none",
+        image,
+        "python",
+        "-c",
+        "from document_worker.domain.chunking.policy import "
+        "DEFAULT_CHUNKING_POLICY as p;"
+        "from document_worker.infrastructure.tokenization.tiktoken_counter import "
+        "TiktokenTokenCounter;"
+        "print(TiktokenTokenCounter(p.encoding).count('договор поставки'))",
+    )
+
+    assert int(output) > 0
