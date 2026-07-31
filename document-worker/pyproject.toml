@@ -46,7 +46,7 @@ test = [
     "pytest-timeout>=2.4.0",
     "coverage[toml]>=7.15.2",
     "hypothesis>=6.145",
-    "testcontainers[postgres,minio]>=4.15.0",
+    "testcontainers[postgres,minio,rabbitmq]>=4.15.0",
 ]
 lint = ["ruff>=0.16.0", "import-linter>=2.13", "deptry>=0.25.1", "pip-audit>=2.10.1"]
 typing = [
@@ -228,7 +228,12 @@ markers = [
     "slow: OCR на реальных сканах и сборка образа (>5 c)",
     "eval: оценка качества на корпусе, по умолчанию отключена",
 ]
-filterwarnings = ["error"]
+filterwarnings = [
+    "error",
+    # testcontainers ругается на собственный декоратор ожидания готовности
+    # прямо при импорте модуля RabbitMQ; починить это может только он сам.
+    "ignore:The @wait_container_is_ready decorator is deprecated:DeprecationWarning",
+]
 
 [tool.coverage.run]
 source = ["document_worker"]
