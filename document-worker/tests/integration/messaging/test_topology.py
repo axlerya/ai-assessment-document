@@ -173,7 +173,7 @@ async def test_command_with_unknown_routing_key_lands_in_unrouted(
     # Опечатка в ключе иначе теряет команду молча: без ошибки у публикующей
     # стороны и без записи где-либо.
     await declare_topology(broker, _topology())
-    before = management.message_count(UNROUTED_QUEUE)
+    before = len(management.fetch(UNROUTED_QUEUE))
 
     await broker.publish(
         b"{}", exchange=COMMANDS_EXCHANGE, routing_key="document.process.typo"
@@ -189,7 +189,7 @@ async def test_retry_base_routing_key_is_bound_to_the_first_level(
     # Ключ устава без суффикса обязан работать и давать первую ступень.
     await declare_topology(broker, _topology())
     first = retry_queue_name(RETRY_LADDER[0][0])
-    before = management.message_count(first)
+    before = len(management.fetch(first))
 
     await broker.publish(b"{}", exchange=RETRY_EXCHANGE, routing_key=RK_RETRY_BASE)
 
@@ -224,9 +224,13 @@ def test_attempt_outside_the_ladder_is_rejected(attempt: int) -> None:
 
 
 async def _grew_to(management: Management, queue: str, expected: int) -> bool:
-    """Ждёт, пока брокер учтёт публикацию: статистика обновляется не мгновенно."""
-    for _ in range(50):
-        if management.message_count(queue) >= expected:
+    """Ждёт появления сообщения в очереди.
+
+    Считается содержимое, а не статистика: `messages` у quorum-очередей
+    обновляется циклом в несколько секунд и в этот момент показывает ноль.
+    """
+    for _ in range(100):
+        if len(management.fetch(queue)) >= expected:
             return True
         await asyncio.sleep(0.1)
     return False

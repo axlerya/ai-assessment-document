@@ -161,13 +161,14 @@ class ProcessDocument:
         *,
         code: str | None = None,
     ) -> ProcessDocumentResult:
+        failure_code = code or type(error).code
         await self.fail.execute(
             FailDocumentProcessingCommand(
                 document_id=command.document_id,
                 correlation_id=command.correlation_id,
                 event_id=command.event_id,
                 job_id=_job_id(claim),
-                error_code=code or type(error).code,
+                error_code=failure_code,
                 error_message=error.message,
                 stage=ProcessingStage.TEXT_EXTRACTION,
                 pages_persisted=len(claim.persisted_page_numbers),
@@ -178,6 +179,7 @@ class ProcessDocument:
             status=DocumentStatus.FAILED,
             pages_total=0,
             chunks_total=0,
+            failure_code=failure_code,
         )
 
 

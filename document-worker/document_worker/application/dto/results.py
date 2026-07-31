@@ -191,3 +191,6 @@ class ProcessDocumentResult:
     # чем в документе, и по разнице видно, что возобновление сработало.
     pages_processed: int = 0
     duplicate: bool = False
+    # Код отказа сопровождает копию сообщения в очереди разбора: тело без
+    # причины оператору ничего не объясняет.
+    failure_code: str | None = None
