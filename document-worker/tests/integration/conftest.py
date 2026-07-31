@@ -34,11 +34,18 @@ from testcontainers.core.container import DockerContainer
 from testcontainers.core.wait_strategies import LogMessageWaitStrategy
 
 from document_worker.infrastructure.cpu.executor import CpuPool
+from document_worker.infrastructure.persistence.unit_of_work import SqlAlchemyUnitOfWork
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Iterator
+    from contextlib import AbstractAsyncContextManager
 
     from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
+
+    from document_worker.application.ports.unit_of_work import (
+        UnitOfWork,
+        UnitOfWorkFactory,
+    )
 
 SERVICE_ROOT = Path(__file__).resolve().parents[2]
 POSTGRES_IMAGE = "postgres:18-alpine"
@@ -328,3 +335,24 @@ def minio_container() -> Iterator[MinioContainer]:
     """Поднимает MinIO один раз на весь прогон."""
     with MinioContainer() as container:
         yield container
+
+
+@pytest.fixture
+def uow_factory(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> UnitOfWorkFactory:
+    """Фабрика единиц работы поверх откатываемой транзакции теста.
+
+    Таймаут выражения задаётся движком, а тестовая транзакция уже открыта,
+    поэтому здесь он не применяется.
+    """
+
+    def factory(
+        *,
+        statement_timeout_ms: int,
+        read_only: bool = False,
+    ) -> AbstractAsyncContextManager[UnitOfWork]:
+        del statement_timeout_ms, read_only
+        return SqlAlchemyUnitOfWork(session_factory)
+
+    return factory

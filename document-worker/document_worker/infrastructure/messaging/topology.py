@@ -89,6 +89,7 @@ class Topology:
     queues: tuple[RabbitQueue, ...]
     bindings: tuple[Binding, ...]
     commands: RabbitExchange
+    events: RabbitExchange
     retry: RabbitExchange
     dead_letter_exchange: RabbitExchange
     process_requested: RabbitQueue
@@ -129,6 +130,7 @@ def build_topology(
         queues=queues,
         bindings=_bindings(retry_ladder, declare_audit_queue=declare_audit_queue),
         commands=_named(exchanges, COMMANDS_EXCHANGE),
+        events=_named(exchanges, EVENTS_EXCHANGE),
         retry=_named(exchanges, RETRY_EXCHANGE),
         dead_letter_exchange=_named(exchanges, DLX_EXCHANGE),
         process_requested=process_requested,
