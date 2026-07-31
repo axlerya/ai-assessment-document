@@ -136,6 +136,15 @@ class MessageClaimService:
                     "received": command.object_ref.to_uri(),
                 },
             )
+        if document.source.mime_type != command.mime_type:
+            raise InvalidCommandError(
+                "команда описывает не тот тип файла, что записан в документе",
+                context={
+                    "document_id": str(command.document_id),
+                    "expected": document.source.mime_type.value,
+                    "received": command.mime_type.value,
+                },
+            )
         return document
 
     def _is_already_done(self, document: Document) -> bool:
