@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Self
+
+from document_worker.domain.value_objects.enums import ExtractionMethod
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -13,7 +15,6 @@ if TYPE_CHECKING:
     from document_worker.domain.value_objects.confidence import OcrConfidence
     from document_worker.domain.value_objects.enums import (
         DocumentStatus,
-        ExtractionMethod,
         PageStatus,
     )
     from document_worker.domain.value_objects.identifiers import (
@@ -81,18 +82,31 @@ class PageSummaryDTO:
 
 @dataclass(frozen=True, slots=True)
 class JobProgressDTO:
-    """Прогресс прогона для периодической записи.
+    """Приращение прогресса прогона.
 
-    Счётчики по способам, а не суммарный: строка прогона хранит именно это
-    разбиение, а восстановить его из суммы нельзя.
+    Приращение, а не итог: воркер, продолживший чужую работу, знает только свои
+    страницы, и запись итогов затёрла бы чужие. Счётчики по способам, а не один
+    суммарный: строка прогона хранит именно это разбиение, а восстановить его
+    из суммы нельзя.
     """
 
-    pages_text_layer: int
-    pages_ocr: int
-    pages_hybrid: int
-    pages_failed: int
-    chunks_created: int
     heartbeat_at: datetime
+    pages_text_layer: int = 0
+    pages_ocr: int = 0
+    pages_hybrid: int = 0
+    pages_failed: int = 0
+    chunks_created: int = 0
+
+    @classmethod
+    def for_page(cls, method: ExtractionMethod, *, at: datetime) -> Self:
+        """Приращение на одну прочитанную страницу."""
+        return cls(
+            heartbeat_at=at,
+            pages_text_layer=int(method is ExtractionMethod.TEXT_LAYER),
+            pages_ocr=int(method is ExtractionMethod.OCR),
+            pages_hybrid=int(method is ExtractionMethod.HYBRID),
+            pages_failed=int(method is ExtractionMethod.NONE),
+        )
 
 
 @dataclass(frozen=True, slots=True)
