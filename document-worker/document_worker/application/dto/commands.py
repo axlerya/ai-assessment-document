@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from datetime import datetime
+    from pathlib import Path
 
     from document_worker.domain.value_objects.identifiers import (
         CorrelationId,
@@ -35,7 +36,7 @@ class ExtractDocumentTextCommand:
 
     document_id: DocumentId
     correlation_id: CorrelationId
-    source_path: str
+    source_path: Path
 
 
 @dataclass(frozen=True, slots=True)
