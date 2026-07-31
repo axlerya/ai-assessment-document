@@ -15,6 +15,8 @@ from document_worker.application.errors import (
     EncryptedDocumentError,
 )
 from document_worker.application.ports.pdf import PdfDocumentReader
+from document_worker.domain.policies.text_layer_quality import TextLayerQualityPolicy
+from document_worker.domain.value_objects.enums import ExtractionMethod
 from document_worker.infrastructure.pdf.pdfplumber_text_reader import (
     PdfPlumberDocumentReader,
 )
@@ -106,6 +108,90 @@ async def test_two_column_page_keeps_columns_apart(
     assert left
     assert right
     assert max(word.bbox.x1 for word in left) < min(word.bbox.x0 for word in right)
+
+
+async def test_page_probe_counts_what_the_policy_measures(
+    reader: PdfPlumberDocumentReader,
+    tmp_path: Path,
+) -> None:
+    path = pdf_builder.make_text_pdf(tmp_path / "doc.pdf")
+
+    async with reader.open(path) as handle:
+        page = await handle.read_page_text(1)
+
+    assert int(page.probe.page_number) == 1
+    assert page.probe.char_count == len(page.text)
+    assert page.probe.word_count == len(page.words)
+    assert 0 < page.probe.alnum_count <= page.probe.char_count
+    assert page.probe.mean_word_length > 0
+
+
+async def test_clean_text_page_is_read_from_its_layer(
+    reader: PdfPlumberDocumentReader,
+    tmp_path: Path,
+) -> None:
+    # Снимок собирается ради этого решения, поэтому проверяется решение,
+    # а не отдельные его слагаемые.
+    path = pdf_builder.make_text_pdf(tmp_path / "doc.pdf")
+
+    async with reader.open(path) as handle:
+        page = await handle.read_page_text(1)
+
+    verdict = TextLayerQualityPolicy().evaluate(page.probe)
+    assert verdict.decision is ExtractionMethod.TEXT_LAYER
+
+
+async def test_page_probe_counts_unmapped_glyphs_as_undecodable(
+    reader: PdfPlumberDocumentReader,
+    tmp_path: Path,
+) -> None:
+    # Глиф без `/ToUnicode` приходит литералом «(cid:1)»: по категории Unicode
+    # это обычный ASCII, и без отдельного счёта слой выглядел бы целым.
+    path = pdf_builder.make_broken_tounicode_pdf(tmp_path / "doc.pdf")
+
+    async with reader.open(path) as handle:
+        page = await handle.read_page_text(1)
+
+    assert page.probe.undecodable_char_count == page.probe.char_count
+
+
+async def test_page_without_readable_glyphs_goes_to_recognition(
+    reader: PdfPlumberDocumentReader,
+    tmp_path: Path,
+) -> None:
+    path = pdf_builder.make_broken_tounicode_pdf(tmp_path / "doc.pdf")
+
+    async with reader.open(path) as handle:
+        page = await handle.read_page_text(1)
+
+    verdict = TextLayerQualityPolicy().evaluate(page.probe)
+    assert verdict.decision is ExtractionMethod.OCR
+
+
+async def test_page_probe_measures_raster_area_of_a_scan(
+    reader: PdfPlumberDocumentReader,
+    tmp_path: Path,
+) -> None:
+    # Доля растра отличает страницу с печатью поверх текста от чистого скана,
+    # и посчитать её можно только здесь.
+    path = pdf_builder.make_scan_pdf(tmp_path / "doc.pdf")
+
+    async with reader.open(path) as handle:
+        page = await handle.read_page_text(1)
+
+    assert page.probe.raster_area_ratio == 1.0
+
+
+async def test_page_probe_of_text_page_reports_no_raster(
+    reader: PdfPlumberDocumentReader,
+    tmp_path: Path,
+) -> None:
+    path = pdf_builder.make_text_pdf(tmp_path / "doc.pdf")
+
+    async with reader.open(path) as handle:
+        page = await handle.read_page_text(1)
+
+    assert page.probe.raster_area_ratio == 0.0
 
 
 async def test_probe_reports_no_broken_fonts_for_clean_document(
