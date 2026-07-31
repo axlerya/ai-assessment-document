@@ -160,6 +160,20 @@ async def test_probe_of_scanned_document_reports_no_text(
     assert probe.char_count == 0
 
 
+async def test_probe_of_page_without_resources_reports_nothing(
+    reader: PdfPlumberDocumentReader,
+    tmp_path: Path,
+) -> None:
+    # Пустая страница без словаря ресурсов встречается в сшитых документах.
+    path = pdf_builder.make_blank_page_pdf(tmp_path / "doc.pdf")
+
+    async with reader.open(path) as handle:
+        probe = await handle.probe()
+
+    assert probe.fonts_without_tounicode == 0
+    assert probe.char_count == 0
+
+
 async def test_reader_rejects_a_page_that_does_not_exist(
     reader: PdfPlumberDocumentReader,
     tmp_path: Path,

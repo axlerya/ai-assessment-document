@@ -80,13 +80,20 @@ def _count_fonts_without_tounicode(path: str) -> int:
     seen: set[str] = set()
     with pikepdf.open(path) as pdf:
         for page in pdf.pages:
-            fonts = page.obj.get("/Resources", {}).get("/Font", {})
-            for name, font in dict(fonts).items():
+            for name, font in _fonts_of(page).items():
                 base = str(font.get("/BaseFont", "")).lstrip("/").split("+")[-1]
                 if base in STANDARD_FONTS or "/ToUnicode" in font:
                     continue
                 seen.add(f"{name}:{base}")
     return len(seen)
+
+
+def _fonts_of(page: pikepdf.Page) -> dict[str, pikepdf.Object]:
+    # Словаря ресурсов у страницы может не быть вовсе: он наследуется от узла
+    # Pages, а у пустой страницы шрифтов нет и там.
+    resources = page.obj.get("/Resources", pikepdf.Dictionary())
+    fonts = resources.get("/Font", pikepdf.Dictionary())
+    return {str(name): font for name, font in fonts.items()}
 
 
 def _read_page(page: Any, number: int) -> PdfPageTextDTO:

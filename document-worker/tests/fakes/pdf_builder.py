@@ -180,6 +180,14 @@ def make_broken_tounicode_pdf(path: Path) -> Path:
     return path
 
 
+def make_blank_page_pdf(path: Path) -> Path:
+    """Страница без ресурсов: ни шрифтов, ни изображений."""
+    with pikepdf.new() as pdf:
+        _append_page(pdf, b"")
+        pdf.save(path, deterministic_id=True)
+    return path
+
+
 def make_empty_pdf(path: Path) -> Path:
     """Документ без единой страницы."""
     with pikepdf.new() as pdf:
