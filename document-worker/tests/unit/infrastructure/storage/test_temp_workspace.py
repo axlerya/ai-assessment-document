@@ -8,6 +8,8 @@
 from __future__ import annotations
 
 import asyncio
+import os
+import time
 from typing import TYPE_CHECKING
 
 import pytest
@@ -162,11 +164,14 @@ async def test_sweeper_removes_stale_workspaces(
     factory: TempDirWorkspaceFactory,
     base_dir: Path,
 ) -> None:
+    # Возраст задаётся явно: сравнение с текущим временем на только что
+    # созданном каталоге зависит от разрешения mtime файловой системы.
     stale = base_dir / f"{PREFIX}stale"
     stale.mkdir()
     (stale / "source.pdf").write_bytes(b"%PDF-1.7")
+    _age(stale, seconds=7200)
 
-    removed = factory.sweep(prefix=PREFIX, older_than_s=0.0)
+    removed = factory.sweep(prefix=PREFIX, older_than_s=3600.0)
 
     assert removed == 1
     assert not stale.exists()
@@ -191,11 +196,18 @@ async def test_sweeper_ignores_foreign_directories(
 ) -> None:
     foreign = base_dir / "someone-elses"
     foreign.mkdir()
+    _age(foreign, seconds=7200)
 
-    removed = factory.sweep(prefix=PREFIX, older_than_s=0.0)
+    removed = factory.sweep(prefix=PREFIX, older_than_s=3600.0)
 
     assert removed == 0
     assert foreign.exists()
+
+
+def _age(directory: Path, *, seconds: float) -> None:
+    """Отодвигает время изменения каталога в прошлое."""
+    past = time.time() - seconds
+    os.utime(directory, (past, past))
 
 
 async def _until(condition: Callable[[], bool]) -> None:
