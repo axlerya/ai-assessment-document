@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from document_worker.domain.policies.text_layer_quality import TextLayerProbe
     from document_worker.domain.value_objects.geometry import BoundingBox
 
 
@@ -44,11 +45,17 @@ class PdfWordDTO:
 
 @dataclass(frozen=True, slots=True)
 class PdfPageTextDTO:
-    """Текст одной страницы вместе со словами."""
+    """Текст одной страницы вместе со словами и снимком её слоя.
+
+    Снимок считается там же, где разбирается страница: доля растра выводится
+    только из объектов PDF, а перебор символов трёхсот страниц в цикле событий
+    останавливал бы heartbeat.
+    """
 
     number: int
     text: str
     words: tuple[PdfWordDTO, ...]
+    probe: TextLayerProbe
 
 
 @dataclass(frozen=True, slots=True)
