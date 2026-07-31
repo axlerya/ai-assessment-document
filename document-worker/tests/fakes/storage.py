@@ -10,11 +10,11 @@ import hashlib
 from typing import TYPE_CHECKING
 
 from document_worker.application.errors import (
+    ChecksumMismatchError,
     DocumentTooLargeError,
     SourceObjectNotFoundError,
 )
 from document_worker.application.ports.object_storage import ObjectStatDTO
-from document_worker.domain.errors import ChecksumMismatch
 from document_worker.domain.value_objects.storage import Checksum, ChecksumAlgorithm
 
 if TYPE_CHECKING:
@@ -70,8 +70,13 @@ class InMemoryObjectStorage:
             )
         checksum = Checksum.sha256_of(payload)
         if expected_checksum is not None and not checksum.matches(expected_checksum):
-            raise ChecksumMismatch(
-                expected=expected_checksum.value, actual=checksum.value
+            raise ChecksumMismatchError(
+                "контрольная сумма скачанного файла не совпала",
+                context={
+                    "expected": expected_checksum.value,
+                    "actual": checksum.value,
+                    "object_key": ref.key,
+                },
             )
         destination.write_bytes(payload)
         return Checksum(ChecksumAlgorithm.SHA256, checksum.value)

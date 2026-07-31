@@ -40,6 +40,15 @@ if TYPE_CHECKING:
 
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+    from document_worker.application.ports.repositories import (
+        DocumentChunkRepository,
+        DocumentPageRepository,
+        DocumentRepository,
+        OutboxRepository,
+        ProcessedMessageRepository,
+        ProcessingJobRepository,
+    )
+
 
 class NestedUnitOfWorkError(PermanentError):
     """Единица работы открыта повторно или используется вне своего блока.
@@ -51,7 +60,18 @@ class NestedUnitOfWorkError(PermanentError):
 
 
 class SqlAlchemyUnitOfWork:
-    """Транзакция и набор репозиториев поверх одной сессии."""
+    """Транзакция и набор репозиториев поверх одной сессии.
+
+    Репозитории объявлены атрибутами класса, а создаются при входе в блок:
+    без объявления единица работы не удовлетворяла бы своему порту статически.
+    """
+
+    documents: DocumentRepository
+    pages: DocumentPageRepository
+    chunks: DocumentChunkRepository
+    jobs: ProcessingJobRepository
+    messages: ProcessedMessageRepository
+    outbox: OutboxRepository
 
     def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
         """Запоминает фабрику; сессия открывается при входе в блок."""

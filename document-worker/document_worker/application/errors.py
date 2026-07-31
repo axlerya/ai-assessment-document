@@ -13,6 +13,7 @@ from document_worker.domain.errors import (
     ChecksumMismatch,
     CorruptedDocument,
     DocumentTooLarge,
+    EmptyDocument,
     EncryptedDocument,
     UnsupportedDocumentFormat,
 )
@@ -300,6 +301,7 @@ _DOMAIN_TO_APPLICATION: dict[type[DomainError], type[PermanentError]] = {
     UnsupportedDocumentFormat: UnsupportedMediaTypeError,
     DocumentTooLarge: DocumentTooLargeError,
     CorruptedDocument: CorruptedDocumentError,
+    EmptyDocument: CorruptedDocumentError,
     EncryptedDocument: EncryptedDocumentError,
     ChecksumMismatch: ChecksumMismatchError,
 }

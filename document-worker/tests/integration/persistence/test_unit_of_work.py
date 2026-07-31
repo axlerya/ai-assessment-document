@@ -126,7 +126,7 @@ async def test_unit_of_work_satisfies_its_port(
     # Репозитории появляются вместе с транзакцией: до входа в блок их нет,
     # потому что нет и сессии, поверх которой они работают.
     async with SqlAlchemyUnitOfWork(session_factory) as uow:
-        assert isinstance(uow, UnitOfWork)  # type: ignore[unreachable]
+        assert isinstance(uow, UnitOfWork)
 
 
 async def test_commit_persists_page_and_outbox_atomically(
