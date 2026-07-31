@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import uuid
 from datetime import UTC, datetime, timedelta
 
@@ -112,6 +113,19 @@ def _partial_verdict() -> DocumentStatusVerdict:
         stats=_stats(*outcomes),
         reasons=("страница 2 не прочитана",),
         failed_pages=(PageNumber(2),),
+    )
+
+
+def _failed_verdict() -> DocumentStatusVerdict:
+    outcomes = [
+        _outcome(1, PageStatus.FAILED, ExtractionMethod.NONE),
+        _outcome(2, PageStatus.FAILED, ExtractionMethod.NONE),
+    ]
+    return DocumentStatusVerdict(
+        status=DocumentStatus.FAILED,
+        stats=_stats(*outcomes),
+        reasons=("too_many_failed_pages",),
+        failed_pages=(PageNumber(1), PageNumber(2)),
     )
 
 
@@ -410,3 +424,22 @@ def _unversioned() -> Document:
         created_at=CREATED_AT,
         updated_at=CREATED_AT,
     )
+
+
+def test_complete_refuses_an_unsuccessful_verdict() -> None:
+    # Иначе документ с вердиктом «отказ» получил бы статус failed и событие
+    # о частичной обработке: успех и отказ пишутся разными путями.
+    document = _processing()
+
+    with pytest.raises(InvariantViolation):
+        document.complete(_failed_verdict(), chunks_total=0, now=FINISHED_AT)
+
+
+def test_complete_leaves_the_document_in_processing_after_refusal() -> None:
+    document = _processing()
+
+    with contextlib.suppress(InvariantViolation):
+        document.complete(_failed_verdict(), chunks_total=0, now=FINISHED_AT)
+
+    assert document.status is DocumentStatus.PROCESSING
+    assert document.pull_events() == ()
