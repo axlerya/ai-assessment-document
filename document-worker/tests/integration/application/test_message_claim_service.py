@@ -109,6 +109,52 @@ async def test_claim_opens_a_running_job(
     assert job.status is JobStatus.RUNNING
 
 
+async def test_claim_hands_the_open_job_to_the_caller(
+    service: MessageClaimService,
+    session: AsyncSession,
+) -> None:
+    # Страницы и терминальная транзакция пишутся в этот прогон, и лишний
+    # запрос за ним стоил бы обращения к базе на каждой странице.
+    document = await _persist(session, make_document())
+
+    result = await service.claim(_command(document))
+
+    assert result.job is not None
+    assert result.job.status is JobStatus.RUNNING
+
+
+async def test_resumed_delivery_continues_the_same_job(
+    service: MessageClaimService,
+    session: AsyncSession,
+    clock: FixedClock,
+    config: ProcessingConfig,
+) -> None:
+    document = await _persist(session, make_document())
+    command = _command(document)
+    first = await service.claim(command)
+    clock.advance(seconds=config.claim_lease_s + 1)
+
+    second = await service.claim(command)
+
+    assert first.job is not None
+    assert second.job is not None
+    assert second.job.id == first.job.id
+
+
+async def test_skipped_message_opens_no_job(
+    service: MessageClaimService,
+    session: AsyncSession,
+) -> None:
+    document = await _persist(
+        session, make_document(status=DocumentStatus.PROCESSED, page_count=1)
+    )
+
+    result = await service.claim(_command(document))
+
+    assert result.outcome is ClaimOutcome.SKIP
+    assert result.job is None
+
+
 async def test_claim_raises_transient_when_document_row_is_absent(
     service: MessageClaimService,
 ) -> None:
