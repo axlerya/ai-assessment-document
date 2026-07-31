@@ -12,9 +12,7 @@ from document_worker.domain.errors import InvalidStatusTransition, InvariantViol
 from document_worker.domain.value_objects.enums import (
     CompletionOutcome,
     DocumentStatus,
-    ExtractionMethod,
     JobStatus,
-    PageStatus,
     ProcessingStage,
 )
 from document_worker.domain.value_objects.identifiers import (
@@ -209,60 +207,37 @@ def test_declare_pages_conflicting_value_raises() -> None:
         job.declare_pages(3)
 
 
-def test_register_page_result_counts_failed_pages_separately() -> None:
-    job = _running(pages=3)
+def test_record_pages_splits_counters_by_extraction_method() -> None:
+    job = _running()
+    job.declare_pages(4)
 
-    job.register_page(PageStatus.EXTRACTED, ExtractionMethod.TEXT_LAYER)
-    job.register_page(PageStatus.PARTIALLY_ILLEGIBLE, ExtractionMethod.OCR)
-    job.register_page(PageStatus.FAILED, ExtractionMethod.NONE)
+    job.record_pages(text_layer=1, ocr=1, hybrid=1, failed=1)
 
-    assert job.pages_done == 2
+    assert job.pages_text_layer == 1
+    assert job.pages_ocr == 1
+    assert job.pages_hybrid == 1
     assert job.pages_failed == 1
+    assert job.pages_done == 3
 
 
-def test_register_page_splits_counters_by_extraction_method() -> None:
-    job = _running(pages=4)
+def test_record_pages_replaces_the_running_tally() -> None:
+    # Итог считается по сохранённым страницам, а не по тому, что успел
+    # насчитать прогресс: воркер мог продолжить чужую работу.
+    job = _running()
+    job.declare_pages(2)
+    job.record_pages(text_layer=1, ocr=0, hybrid=0, failed=0)
 
-    job.register_page(PageStatus.EXTRACTED, ExtractionMethod.TEXT_LAYER)
-    job.register_page(PageStatus.EXTRACTED, ExtractionMethod.OCR)
-    job.register_page(PageStatus.ILLEGIBLE, ExtractionMethod.HYBRID)
-    job.register_page(PageStatus.FAILED, ExtractionMethod.NONE)
+    job.record_pages(text_layer=2, ocr=0, hybrid=0, failed=0)
 
-    assert (job.pages_text_layer, job.pages_ocr, job.pages_hybrid) == (1, 1, 1)
-    assert job.pages_failed == 1
+    assert job.pages_text_layer == 2
 
 
-@pytest.mark.parametrize(
-    ("status", "method"),
-    [
-        (PageStatus.EXTRACTED, ExtractionMethod.NONE),
-        (PageStatus.FAILED, ExtractionMethod.OCR),
-    ],
-)
-def test_register_page_rejects_method_contradicting_status(
-    status: PageStatus,
-    method: ExtractionMethod,
-) -> None:
-    job = _running(pages=1)
+def test_record_pages_beyond_declared_total_raises() -> None:
+    job = _running()
+    job.declare_pages(1)
 
     with pytest.raises(InvariantViolation):
-        job.register_page(status, method)
-
-
-def test_register_page_beyond_declared_total_raises() -> None:
-    job = _running(pages=1)
-    job.register_page(PageStatus.EXTRACTED, ExtractionMethod.TEXT_LAYER)
-
-    with pytest.raises(InvariantViolation):
-        job.register_page(PageStatus.EXTRACTED, ExtractionMethod.TEXT_LAYER)
-
-
-def test_register_page_without_declared_total_is_allowed() -> None:
-    job = _running(pages=None)
-
-    job.register_page(PageStatus.EXTRACTED, ExtractionMethod.TEXT_LAYER)
-
-    assert job.pages_done == 1
+        job.record_pages(text_layer=2, ocr=0, hybrid=0, failed=0)
 
 
 def test_duration_is_none_until_finished() -> None:

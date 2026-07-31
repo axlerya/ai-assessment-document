@@ -39,6 +39,7 @@ from document_worker.domain.value_objects.enums import (
     ProcessingStage,
 )
 from document_worker.domain.value_objects.identifiers import DocumentId, EventId
+from document_worker.domain.value_objects.storage import Checksum, FileSize
 from document_worker.infrastructure.persistence.mappers.document import document_to_row
 from tests.factories import (
     make_document,
@@ -56,6 +57,7 @@ if TYPE_CHECKING:
     from document_worker.domain.entities.document import Document
     from document_worker.domain.entities.document_page import DocumentPage
     from document_worker.domain.entities.processing_job import ProcessingJob
+    from document_worker.domain.value_objects.versioning import PipelineVersion
     from tests.fakes.system import FixedClock, SequentialIdGenerator
 
 pytestmark = pytest.mark.integration
@@ -64,6 +66,8 @@ pytestmark = pytest.mark.integration
 # текста»; страницы по умолчанию короче.
 LONG_TEXT = "договор поставки товаров и услуг между сторонами настоящего дела " * 4
 LEASE_OWNER = "test-relay"
+SOURCE_SIZE = FileSize(2048)
+SOURCE_CHECKSUM = Checksum.sha256_of(b"source")
 
 
 @pytest.fixture
@@ -118,6 +122,8 @@ class Claimed:
             job_id=self.job.id,
             page_count=page_count,
             chunks_total=0,
+            source_size=SOURCE_SIZE,
+            source_checksum=SOURCE_CHECKSUM,
         )
 
     def failure(
@@ -194,6 +200,19 @@ async def _job_of(uow_factory: UnitOfWorkFactory, document: Document) -> Process
         job = await uow.jobs.get(document.id, PIPELINE_VERSION)
     assert job is not None
     return job
+
+
+def _deterministic_id(
+    *,
+    document_id: DocumentId,
+    pipeline_version: PipelineVersion,
+    event_type: str,
+) -> uuid.UUID:
+    return EventId.deterministic(
+        document_id=document_id,
+        pipeline_version=pipeline_version,
+        event_type=event_type,
+    ).value
 
 
 async def _outbox(uow_factory: UnitOfWorkFactory) -> tuple[OutboxRecordDTO, ...]:
@@ -297,7 +316,7 @@ async def test_outbox_event_id_is_deterministic(
     await complete.execute(claimed.completion(page_count=2))
 
     records = await _outbox(uow_factory)
-    assert records[0].event_id == EventId.deterministic(
+    assert records[0].event_id == _deterministic_id(
         document_id=document.id,
         pipeline_version=PIPELINE_VERSION,
         event_type=DocumentProcessed.event_type,
@@ -364,6 +383,8 @@ async def test_completion_of_a_missing_document_raises_not_found(
         job_id=claimed.job.id,
         page_count=1,
         chunks_total=0,
+        source_size=SOURCE_SIZE,
+        source_checksum=SOURCE_CHECKSUM,
     )
 
     with pytest.raises(DocumentNotFoundError):
@@ -399,7 +420,7 @@ async def test_failure_enqueues_one_event(
 
     records = await _outbox(uow_factory)
     assert len(records) == 1
-    assert records[0].event_id == EventId.deterministic(
+    assert records[0].event_id == _deterministic_id(
         document_id=claimed.document.id,
         pipeline_version=PIPELINE_VERSION,
         event_type=DocumentProcessingFailed.event_type,
