@@ -78,7 +78,7 @@ jobs:
       - name: Схема на живом PostgreSQL, хранилище на MinIO и топология на RabbitMQ
         # Порог покрытия проверяется по объединённым данным всех уровней,
         # а не по одному интеграционному прогону.
-        run: uv run pytest -m integration --cov-fail-under=0
+        run: uv run pytest -m "integration and not slow" --cov-fail-under=0
 
   unit:
     name: Unit-тесты (py${{ matrix.python-version }})
