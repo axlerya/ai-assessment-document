@@ -246,7 +246,13 @@ source = ["document_worker"]
 branch = true
 parallel = true
 concurrency = ["thread", "greenlet", "multiprocessing"]
-omit = ["*/migrations/*", "*/__main__.py"]
+omit = [
+    "*/migrations/*",
+    "*/__main__.py",
+    # Точка входа поднимает сервер и живёт до сигнала: её проверяет запуск
+    # контейнера, а не тест внутри процесса.
+    "*/bootstrap/entrypoint.py",
+]
 
 [tool.coverage.report]
 fail_under = 85

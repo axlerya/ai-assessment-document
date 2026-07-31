@@ -80,6 +80,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from faststream.rabbit import RabbitBroker, RabbitRouter
+    from sqlalchemy.ext.asyncio import AsyncEngine
 
     from document_worker.infrastructure.config.settings import AppSettings
 
@@ -89,6 +90,7 @@ class Services:
     """Собранный сервис: всё, что нужно точке входа."""
 
     settings: AppSettings
+    engine: AsyncEngine
     broker: RabbitBroker
     router: RabbitRouter
     process_document: ProcessDocument
@@ -182,6 +184,7 @@ async def build_services(settings: AppSettings) -> AsyncIterator[Services]:
         await declare_topology(broker, topology)
         yield Services(
             settings=settings,
+            engine=engine,
             broker=broker,
             router=router,
             process_document=process_document,
