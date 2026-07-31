@@ -9,12 +9,16 @@ if TYPE_CHECKING:
     from datetime import datetime
     from pathlib import Path
 
+    from document_worker.application.dto.extraction import (
+        DocumentExtraction,
+        PagePlanEntryDTO,
+    )
     from document_worker.domain.value_objects.identifiers import (
         CorrelationId,
         DocumentId,
         EventId,
+        JobId,
     )
-    from document_worker.domain.value_objects.paging import PageNumber
     from document_worker.domain.value_objects.storage import MimeType, ObjectRef
 
 
@@ -45,8 +49,9 @@ class ProcessDocumentPageCommand:
 
     document_id: DocumentId
     correlation_id: CorrelationId
-    page_number: PageNumber
-    source_path: str
+    job_id: JobId
+    entry: PagePlanEntryDTO
+    extraction: DocumentExtraction
 
 
 @dataclass(frozen=True, slots=True)

@@ -15,6 +15,7 @@ if TYPE_CHECKING:
     from document_worker.domain.value_objects.confidence import OcrConfidence
     from document_worker.domain.value_objects.enums import (
         DocumentStatus,
+        PageFailureReason,
         PageStatus,
     )
     from document_worker.domain.value_objects.identifiers import (
@@ -135,6 +136,20 @@ class OutboxRecordDTO:
     correlation_id: str | None
     occurred_at: datetime
     attempts: int
+
+
+@dataclass(frozen=True, slots=True)
+class ProcessDocumentPageResult:
+    """Итог одной страницы."""
+
+    number: PageNumber
+    page_id: PageId
+    status: PageStatus
+    method: ExtractionMethod
+    confidence: OcrConfidence | None
+    char_count: int
+    failure_reason: PageFailureReason | None
+    persisted: bool
 
 
 @dataclass(frozen=True, slots=True)
