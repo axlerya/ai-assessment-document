@@ -19,6 +19,8 @@ from document_worker.bootstrap.composition import build_services
 from document_worker.bootstrap.outbox import OutboxRelay, running
 from document_worker.infrastructure.config.settings import AppSettings
 from document_worker.infrastructure.health import BrokerProbe, DatabaseProbe
+from document_worker.observability.logging import configure_logging
+from document_worker.observability.metrics import Metrics
 
 if TYPE_CHECKING:
     from document_worker.application.ports.health import HealthProbe
@@ -42,7 +44,7 @@ async def serve(
         async with running(relay):
             server = uvicorn.Server(
                 uvicorn.Config(
-                    create_app(services.broker, probes),
+                    create_app(services.broker, probes, Metrics()),
                     host=HTTP_HOST,
                     port=HTTP_PORT,
                     log_config=None,
@@ -53,5 +55,6 @@ async def serve(
 
 def run() -> None:  # pragma: no cover — проверяется запуском контейнера
     """Запускает сервис."""
+    configure_logging()
     with contextlib.suppress(KeyboardInterrupt):
         asyncio.run(serve(AppSettings()))

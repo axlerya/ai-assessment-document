@@ -18,6 +18,7 @@ from document_worker.bootstrap.app import (
     HTTP_UNAVAILABLE,
     LIVENESS_PATH,
     READINESS_PATH,
+    build_metrics_route,
     build_readiness_route,
     create_app,
     liveness_route,
@@ -25,6 +26,7 @@ from document_worker.bootstrap.app import (
 )
 from document_worker.infrastructure.health import BrokerProbe, DatabaseProbe
 from document_worker.infrastructure.persistence.engine import build_engine
+from document_worker.observability.metrics import Metrics
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncEngine
@@ -128,14 +130,17 @@ async def test_routes_answer_over_asgi(migrated_engine: AsyncEngine) -> None:
     await build_readiness_route([DatabaseProbe(engine=migrated_engine)])(
         SCOPE, receive, send
     )
+    await build_metrics_route(Metrics())(SCOPE, receive, send)
 
     starts = [message for message in sent if message["type"] == "http.response.start"]
-    assert [message["status"] for message in starts] == [HTTP_OK, HTTP_OK]
+    assert [message["status"] for message in starts] == [HTTP_OK] * 3
 
 
-def test_app_wires_both_probes(migrated_engine: AsyncEngine) -> None:
+def test_app_wires_probes_and_metrics(migrated_engine: AsyncEngine) -> None:
     app = create_app(
-        RabbitBroker("amqp://127.0.0.1:1"), [DatabaseProbe(engine=migrated_engine)]
+        RabbitBroker("amqp://127.0.0.1:1"),
+        [DatabaseProbe(engine=migrated_engine)],
+        Metrics(),
     )
 
     assert app is not None

@@ -21,15 +21,19 @@ from faststream.asgi import AsgiFastStream, AsgiResponse, get
 # через get_type_hints() и имя из блока TYPE_CHECKING не найдёт.
 from faststream.asgi.types import Scope
 
+from document_worker.observability.metrics import CONTENT_TYPE as METRICS_CONTENT_TYPE
+
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
     from faststream.rabbit import RabbitBroker
 
     from document_worker.application.ports.health import HealthProbe
+    from document_worker.observability.metrics import Metrics
 
 LIVENESS_PATH = "/health/live"
 READINESS_PATH = "/health/ready"
+METRICS_PATH = "/metrics"
 
 HTTP_OK = 200
 HTTP_UNAVAILABLE = 503
@@ -74,9 +78,29 @@ def build_readiness_route(probes: Sequence[HealthProbe]) -> Any:
     return readiness_route
 
 
+def build_metrics_route(metrics: Metrics) -> Any:
+    """Отдаёт метрики в формате Prometheus.
+
+    Сервис их только выставляет: кто и как часто их забирает — забота
+    развёртывания, а не кода.
+    """
+
+    @get
+    async def metrics_route(scope: Scope) -> AsgiResponse:
+        del scope
+        return AsgiResponse(
+            body=metrics.render(),
+            status_code=HTTP_OK,
+            headers={"content-type": METRICS_CONTENT_TYPE},
+        )
+
+    return metrics_route
+
+
 def create_app(
     broker: RabbitBroker,
     probes: Sequence[HealthProbe],
+    metrics: Metrics,
 ) -> AsgiFastStream:
     """Собирает ASGI-приложение сервиса поверх подключённого брокера."""
     return AsgiFastStream(
@@ -84,5 +108,6 @@ def create_app(
         asgi_routes=[
             (LIVENESS_PATH, liveness_route),
             (READINESS_PATH, build_readiness_route(probes)),
+            (METRICS_PATH, build_metrics_route(metrics)),
         ],
     )
