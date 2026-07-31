@@ -176,10 +176,18 @@ class Document:
         Raises:
             IncompletePageSet: Число страниц не объявлено или не совпадает.
             InvalidStatusTransition: Документ не в обработке.
+            InvariantViolation: Вердикт не является успешным.
         """
         _require_utc(now, "now")
         if self.status.is_terminal:
             return CompletionOutcome.DUPLICATE
+        if not verdict.status.is_successful:
+            # Успех и отказ пишутся разными путями: иначе вердикт «отказ» дал бы
+            # статус failed вместе с событием о частичной обработке.
+            raise InvariantViolation(
+                "завершение успехом не принимает неуспешный вердикт",
+                context={"status": verdict.status.value},
+            )
         self.status.ensure_can_transition_to(verdict.status)
         self._ensure_page_set_complete(verdict.stats)
 
