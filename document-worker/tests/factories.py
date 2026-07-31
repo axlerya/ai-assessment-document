@@ -213,9 +213,14 @@ def make_job(
     *,
     status: JobStatus = JobStatus.RUNNING,
     event_id: EventId | None = None,
+    pages_total: int | None = 2,
 ) -> ProcessingJob:
-    """Прогон обработки документа."""
+    """Прогон обработки документа.
+
+    Прогон без объявленного числа страниц ещё ничего не считал.
+    """
     terminal = status in (JobStatus.SUCCEEDED, JobStatus.FAILED)
+    counted = pages_total is not None
     return ProcessingJob(
         id=JobId(uuid.uuid4()),
         document_id=document.id,
@@ -227,10 +232,10 @@ def make_job(
         scheduled_at=NOW,
         started_at=None if status is JobStatus.QUEUED else NOW,
         finished_at=NOW + timedelta(minutes=2) if terminal else None,
-        pages_total=2,
-        pages_text_layer=1,
-        pages_ocr=1,
+        pages_total=pages_total,
+        pages_text_layer=1 if counted else 0,
+        pages_ocr=1 if counted else 0,
         pages_hybrid=0,
         pages_failed=0,
-        chunks_created=7,
+        chunks_created=7 if counted else 0,
     )
