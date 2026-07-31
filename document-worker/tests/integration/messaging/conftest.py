@@ -22,14 +22,19 @@ from urllib.parse import quote
 import pytest
 import pytest_asyncio
 from faststream.rabbit import RabbitBroker
-from testcontainers.community.rabbitmq import RabbitMqContainer
+from testcontainers.core.container import DockerContainer
+from testcontainers.core.wait_strategies import LogMessageWaitStrategy
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Iterator
 
 RABBITMQ_IMAGE = "rabbitmq:4.2-management-alpine"
+AMQP_PORT = 5672
 MANAGEMENT_PORT = 15672
 DEFAULT_VHOST = "/"
+USER = "guest"
+PASSWORD = "guest"  # noqa: S105 — учётные данные образа по умолчанию
+READY_LOG = r"Server startup complete"
 
 
 @dataclass(frozen=True, slots=True)
@@ -42,29 +47,46 @@ class Management:
 
     def queue(self, name: str, *, vhost: str = DEFAULT_VHOST) -> dict[str, Any]:
         """Описание очереди так, как его хранит брокер."""
-        return self._request("GET", f"queues/{_q(vhost)}/{_q(name)}")
+        described: dict[str, Any] = self._request(
+            "GET", f"queues/{_q(vhost)}/{_q(name)}"
+        )
+        return described
 
     def arguments_of(self, name: str, *, vhost: str = DEFAULT_VHOST) -> dict[str, Any]:
         """Аргументы очереди."""
         return dict(self.queue(name, vhost=vhost).get("arguments", {}))
 
     def message_count(self, name: str, *, vhost: str = DEFAULT_VHOST) -> int:
-        """Сколько сообщений лежит в очереди."""
+        """Сколько сообщений лежит в очереди по данным статистики."""
         return int(self.queue(name, vhost=vhost).get("messages", 0))
 
-    def peek(self, name: str, *, vhost: str = DEFAULT_VHOST) -> dict[str, Any]:
-        """Первое сообщение очереди, не снимая его оттуда."""
+    def fetch(
+        self,
+        name: str,
+        *,
+        count: int = 10,
+        vhost: str = DEFAULT_VHOST,
+    ) -> list[dict[str, Any]]:
+        """Читает сообщения очереди, возвращая их обратно.
+
+        Счётчик из статистики обновляется с задержкой, особенно у quorum-очередей,
+        а чтение показывает содержимое очереди прямо сейчас.
+        """
         messages = self._request(
             "POST",
             f"queues/{_q(vhost)}/{_q(name)}/get",
             body={
-                "count": 1,
+                "count": count,
                 "ackmode": "ack_requeue_true",
                 "encoding": "auto",
                 "truncate": 50_000,
             },
         )
-        return dict(messages[0])  # type: ignore[index]
+        return list(messages or [])
+
+    def peek(self, name: str, *, vhost: str = DEFAULT_VHOST) -> dict[str, Any]:
+        """Первое сообщение очереди, не снимая его оттуда."""
+        return self.fetch(name, count=1, vhost=vhost)[0]
 
     def create_vhost(self, name: str) -> None:
         """Создаёт vhost и даёт на него права пользователю теста."""
@@ -106,36 +128,41 @@ def _q(value: str) -> str:
 
 
 @pytest.fixture(scope="session")
-def rabbitmq_container() -> Iterator[RabbitMqContainer]:
-    """Поднимает RabbitMQ один раз на весь прогон."""
-    container = RabbitMqContainer(RABBITMQ_IMAGE)
-    container.with_exposed_ports(MANAGEMENT_PORT)
+def rabbitmq_container() -> Iterator[DockerContainer]:
+    """Поднимает RabbitMQ один раз на весь прогон.
+
+    Готовность определяется по журналу, а не пробным подключением: пробник
+    готового контейнера иногда попадает на порт управления и принимает ответ
+    HTTP за несовместимую версию протокола.
+    """
+    container = (
+        DockerContainer(RABBITMQ_IMAGE)
+        .with_exposed_ports(AMQP_PORT, MANAGEMENT_PORT)
+        .with_env("RABBITMQ_DEFAULT_USER", USER)
+        .with_env("RABBITMQ_DEFAULT_PASS", PASSWORD)
+        .waiting_for(LogMessageWaitStrategy(READY_LOG))
+    )
     with container:
         yield container
 
 
 @pytest.fixture(scope="session")
-def rabbitmq_url(rabbitmq_container: RabbitMqContainer) -> str:
+def rabbitmq_url(rabbitmq_container: DockerContainer) -> str:
     """Базовый URL подключения; vhost дописывает тот, кому он нужен."""
-    params = rabbitmq_container.get_connection_params()
-    return (
-        f"amqp://{params.credentials.username}:{params.credentials.password}"
-        f"@{params.host}:{params.port}/"
-    )
+    host = rabbitmq_container.get_container_host_ip()
+    port = rabbitmq_container.get_exposed_port(AMQP_PORT)
+    return f"amqp://{USER}:{PASSWORD}@{host}:{port}/"
 
 
 @pytest.fixture(scope="session")
-def management(rabbitmq_container: RabbitMqContainer) -> Management:
+def management(rabbitmq_container: DockerContainer) -> Management:
     """Доступ к management API того же контейнера."""
-    params = rabbitmq_container.get_connection_params()
     host = rabbitmq_container.get_container_host_ip()
     port = rabbitmq_container.get_exposed_port(MANAGEMENT_PORT)
-    user = params.credentials.username
-    credentials = f"{user}:{params.credentials.password}"
     return Management(
         base_url=f"http://{host}:{port}",
-        auth=b64encode(credentials.encode()).decode(),
-        user=user,
+        auth=b64encode(f"{USER}:{PASSWORD}".encode()).decode(),
+        user=USER,
     )
 
 

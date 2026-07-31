@@ -14,7 +14,6 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 import pytest
-from faststream.rabbit import RabbitBroker
 
 from document_worker.application.dto.commands import ProcessDocumentCommand
 from document_worker.application.dto.results import ProcessDocumentResult
@@ -30,13 +29,12 @@ from document_worker.domain.value_objects.identifiers import (
     EventId,
 )
 from document_worker.domain.value_objects.storage import MimeType, ObjectRef
+from document_worker.infrastructure.messaging.broker import build_broker
 from document_worker.infrastructure.messaging.declare import declare_topology
 from document_worker.infrastructure.messaging.retry_publisher import RetryPublisher
 from document_worker.infrastructure.messaging.topology import (
-    COMMANDS_EXCHANGE,
     DLQ_QUEUE,
     PROCESS_REQUESTED_QUEUE,
-    RETRY_EXCHANGE,
     RK_PROCESS_REQUESTED,
     RK_RETRY_BASE,
     build_topology,
@@ -52,8 +50,11 @@ from document_worker.presentation.messaging.subscribers.process_document import 
 )
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator
+    from collections.abc import AsyncIterator, Callable
 
+    from faststream.rabbit import RabbitBroker, RabbitExchange
+
+    from document_worker.infrastructure.messaging.topology import Topology
     from tests.integration.messaging.conftest import Management
 
 pytestmark = pytest.mark.integration
@@ -61,7 +62,7 @@ pytestmark = pytest.mark.integration
 CONSUMER_TIMEOUT_MS = 7_200_000
 DEFAULT_BUCKET = "documents"
 # Лестница из реальных интервалов растянула бы прогон на 42 минуты.
-FAST_LADDER = (("200ms", 200), ("500ms", 500), ("1s", 1_000))
+FAST_LADDER = (("200ms", 200), ("500ms", 500), ("3s", 3_000))
 DOCUMENT_ID = uuid.UUID("11111111-2222-3333-4444-555555555555")
 
 
@@ -118,6 +119,7 @@ class Consumer:
     broker: RabbitBroker
     processor: StubProcessor
     vhost: str
+    topology: Topology
 
 
 @pytest.fixture
@@ -132,25 +134,30 @@ async def consumer(
     processor: StubProcessor,
 ) -> AsyncIterator[Consumer]:
     """Брокер с объявленной топологией и запущенным подписчиком."""
-    connected = RabbitBroker(f"{rabbitmq_url}{isolated_vhost}", max_consumers=1)
+    connected = build_broker(f"{rabbitmq_url}{isolated_vhost}")
     topology = build_topology(
         consumer_timeout_ms=CONSUMER_TIMEOUT_MS, retry_ladder=FAST_LADDER
     )
-    await connected.connect()
-    await declare_topology(connected, topology)
     connected.include_router(
         build_process_document_router(
             queue=topology.process_requested,
-            exchange=COMMANDS_EXCHANGE,
+            exchange=topology.commands,
             processor=processor,
-            retrier=RetryPublisher(connected, ladder=FAST_LADDER),
+            retrier=RetryPublisher(connected, topology),
             default_bucket=DEFAULT_BUCKET,
-            max_attempts=len(FAST_LADDER),
+            max_retries=len(FAST_LADDER),
         )
     )
+    await connected.connect()
+    await declare_topology(connected, topology)
     await connected.start()
     try:
-        yield Consumer(broker=connected, processor=processor, vhost=isolated_vhost)
+        yield Consumer(
+            broker=connected,
+            processor=processor,
+            vhost=isolated_vhost,
+            topology=topology,
+        )
     finally:
         await connected.stop()
 
@@ -158,10 +165,18 @@ async def consumer(
 async def _publish(consumer: Consumer, body: bytes, **kwargs: object) -> None:
     await consumer.broker.publish(
         body,
-        exchange=COMMANDS_EXCHANGE,
+        exchange=consumer.topology.commands,
         routing_key=RK_PROCESS_REQUESTED,
         **kwargs,  # type: ignore[arg-type]
     )
+
+
+async def _wait_until(predicate: Callable[[], bool]) -> bool:
+    for _ in range(100):
+        if predicate():
+            return True
+        await asyncio.sleep(0.1)
+    return False
 
 
 async def _wait_for(
@@ -170,12 +185,12 @@ async def _wait_for(
     queue: str,
     expected: int,
 ) -> int:
-    for _ in range(80):
-        count = management.message_count(queue, vhost=consumer.vhost)
+    for _ in range(100):
+        count = len(management.fetch(queue, vhost=consumer.vhost))
         if count >= expected:
             return count
         await asyncio.sleep(0.1)
-    return management.message_count(queue, vhost=consumer.vhost)
+    return len(management.fetch(queue, vhost=consumer.vhost))
 
 
 async def _settled(management: Management, consumer: Consumer) -> None:
@@ -193,68 +208,62 @@ async def test_successful_processing_acknowledges_the_message(
 ) -> None:
     await _publish(consumer, _body())
 
+    assert await _wait_until(lambda: bool(consumer.processor.commands))
     await _settled(management, consumer)
-
-    assert consumer.processor.commands
-    assert management.message_count(DLQ_QUEUE, vhost=consumer.vhost) == 0
+    assert management.fetch(DLQ_QUEUE, vhost=consumer.vhost) == []
 
 
 async def test_message_becomes_a_command_with_its_attempt(
     consumer: Consumer,
-    management: Management,
 ) -> None:
     await _publish(consumer, _body(), headers={HEADER_ATTEMPT: 2})
 
-    await _settled(management, consumer)
+    assert await _wait_until(lambda: bool(consumer.processor.commands))
 
     command = consumer.processor.commands[0]
-    assert command.attempt == 2
-    assert command.max_attempts == len(FAST_LADDER)
+    assert command.attempt == 3
+    assert command.max_attempts == len(FAST_LADDER) + 1
     assert command.object_ref.bucket == DEFAULT_BUCKET
 
 
-async def test_transient_error_republishes_to_the_first_retry_level(
+async def test_transient_error_comes_back_through_the_ladder(
     consumer: Consumer,
-    management: Management,
 ) -> None:
+    # Копия уходит на ступень задержки, там ждёт TTL и возвращается в рабочую
+    # очередь: наблюдаем это по повторному вызову с выросшей попыткой.
     consumer.processor.error = StorageUnavailableError("хранилище недоступно")
 
     await _publish(consumer, _body())
 
-    first = retry_queue_name(FAST_LADDER[0][0])
-    assert await _wait_for(management, consumer, first, 1) == 1
+    assert await _wait_until(lambda: len(consumer.processor.commands) >= 2)
+    assert consumer.processor.commands[1].attempt == 2
 
 
-async def test_message_returns_to_the_main_queue_after_the_delay(
+async def test_retry_survives_because_the_delay_lives_in_the_broker(
     consumer: Consumer,
-    management: Management,
 ) -> None:
-    # Задержка живёт в брокере, а не в памяти обработчика: иначе она исчезает
-    # при первом же перезапуске воркера.
+    # Задержка хранится в очереди, а не в памяти обработчика: иначе она
+    # исчезала бы при первом же перезапуске воркера.
     consumer.processor.error = StorageUnavailableError("хранилище недоступно")
     await _publish(consumer, _body())
-    await _wait_for(management, consumer, retry_queue_name(FAST_LADDER[0][0]), 1)
+    await _wait_until(lambda: bool(consumer.processor.commands))
 
     consumer.processor.error = None
 
-    await _settled(management, consumer)
-    assert len(consumer.processor.commands) >= 2
+    assert await _wait_until(lambda: len(consumer.processor.commands) >= 2)
 
 
-async def test_attempt_header_grows_with_every_retry(
-    consumer: Consumer,
-    management: Management,
-) -> None:
+async def test_attempt_grows_with_every_retry(consumer: Consumer) -> None:
     consumer.processor.error = StorageUnavailableError("хранилище недоступно")
 
     await _publish(consumer, _body())
-    await _wait_for(management, consumer, retry_queue_name(FAST_LADDER[1][0]), 1)
 
+    assert await _wait_until(lambda: len(consumer.processor.commands) >= 3)
     attempts = [command.attempt for command in consumer.processor.commands]
-    assert attempts[:2] == [1, 2]
+    assert attempts[:3] == [1, 2, 3]
 
 
-async def test_retry_copy_keeps_the_body_byte_for_byte(
+async def test_copy_keeps_the_body_byte_for_byte(
     consumer: Consumer,
     management: Management,
 ) -> None:
@@ -263,28 +272,29 @@ async def test_retry_copy_keeps_the_body_byte_for_byte(
     consumer.processor.error = StorageUnavailableError("хранилище недоступно")
     body = _body()
 
-    await _publish(consumer, body)
+    await _publish(consumer, body, headers={HEADER_ATTEMPT: len(FAST_LADDER)})
 
-    first = retry_queue_name(FAST_LADDER[0][0])
-    await _wait_for(management, consumer, first, 1)
-    assert management.peek(first, vhost=consumer.vhost)["payload"].encode() == body
+    await _wait_for(management, consumer, DLQ_QUEUE, 1)
+    assert management.peek(DLQ_QUEUE, vhost=consumer.vhost)["payload"].encode() == body
 
 
-async def test_retry_copy_drops_broker_death_headers(
+async def test_copy_drops_broker_death_headers(
     consumer: Consumer,
     management: Management,
 ) -> None:
     # Скопированный x-death уехал бы в копию обычным заголовком и врал бы про
-    # число возвратов.
+    # число возвратов: брокер его при обычной публикации не создаёт.
     consumer.processor.error = StorageUnavailableError("хранилище недоступно")
 
-    await _publish(consumer, _body(), headers={"x-death": "заглушка"})
+    await _publish(
+        consumer,
+        _body(),
+        headers={"x-death": "заглушка", HEADER_ATTEMPT: len(FAST_LADDER)},
+    )
 
-    first = retry_queue_name(FAST_LADDER[0][0])
-    await _wait_for(management, consumer, first, 1)
-    headers = management.peek(first, vhost=consumer.vhost)["properties"]["headers"]
+    await _wait_for(management, consumer, DLQ_QUEUE, 1)
+    headers = management.peek(DLQ_QUEUE, vhost=consumer.vhost)["properties"]["headers"]
     assert "x-death" not in headers
-    assert headers[HEADER_ATTEMPT] == 1
 
 
 async def test_exhausted_ladder_sends_the_message_to_the_dlq(
@@ -310,10 +320,8 @@ async def test_permanent_error_goes_to_the_dlq_without_retry(
 
     assert await _wait_for(management, consumer, DLQ_QUEUE, 1) == 1
     assert (
-        management.message_count(
-            retry_queue_name(FAST_LADDER[0][0]), vhost=consumer.vhost
-        )
-        == 0
+        management.fetch(retry_queue_name(FAST_LADDER[0][0]), vhost=consumer.vhost)
+        == []
     )
     headers = management.peek(DLQ_QUEUE, vhost=consumer.vhost)["properties"]["headers"]
     assert headers[HEADER_ERROR_CODE] == CorruptedDocumentError.code
@@ -342,10 +350,8 @@ async def test_concurrent_processing_consumes_an_attempt(
 
     await _publish(consumer, _body())
 
-    first = retry_queue_name(FAST_LADDER[0][0])
-    await _wait_for(management, consumer, first, 1)
-    headers = management.peek(first, vhost=consumer.vhost)["properties"]["headers"]
-    assert headers[HEADER_ATTEMPT] == 1
+    assert await _wait_for(management, consumer, DLQ_QUEUE, 1) == 1
+    assert len(consumer.processor.commands) == len(FAST_LADDER) + 1
 
 
 async def test_unreadable_body_is_rejected_without_reaching_the_use_case(
@@ -380,20 +386,25 @@ async def test_short_delay_is_not_blocked_by_a_long_one(
     fast = retry_queue_name(FAST_LADDER[0][0])
     await consumer.broker.publish(
         b"slow",
-        exchange=RETRY_EXCHANGE,
+        exchange=_retry_exchange(consumer),
         routing_key=f"{RK_RETRY_BASE}.{FAST_LADDER[2][0]}",
     )
-    await _wait_for(management, consumer, slow, 1)
+    assert await _wait_for(management, consumer, slow, 1) == 1
     await consumer.broker.publish(
         b"fast",
-        exchange=RETRY_EXCHANGE,
+        exchange=_retry_exchange(consumer),
         routing_key=f"{RK_RETRY_BASE}.{FAST_LADDER[0][0]}",
     )
 
     await asyncio.sleep(0.6)
 
-    assert management.message_count(fast, vhost=consumer.vhost) == 0
-    assert management.message_count(slow, vhost=consumer.vhost) == 1
+    assert management.fetch(fast, vhost=consumer.vhost) == []
+    assert len(management.fetch(slow, vhost=consumer.vhost)) == 1
+    assert consumer.processor.commands == []
+
+
+def _retry_exchange(consumer: Consumer) -> RabbitExchange:
+    return consumer.topology.retry
 
 
 def _command_stub() -> ProcessDocumentCommand:

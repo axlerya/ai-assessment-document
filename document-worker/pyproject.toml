@@ -47,7 +47,7 @@ test = [
     "pytest-timeout>=2.4.0",
     "coverage[toml]>=7.15.2",
     "hypothesis>=6.145",
-    "testcontainers[postgres,minio,rabbitmq]>=4.15.0",
+    "testcontainers[postgres,minio]>=4.15.0",
 ]
 lint = ["ruff>=0.16.0", "import-linter>=2.13", "deptry>=0.25.1", "pip-audit>=2.10.1"]
 typing = [
@@ -99,6 +99,10 @@ runtime-evaluated-decorators = ["faststream.asgi.get", "faststream.asgi.post"]
 "migrations/**/*.py" = ["INP001", "D", "ERA001"]
 "scripts/**/*.py" = ["INP001", "T201"]
 "document_worker/bootstrap/**/*.py" = ["PLR0913"]   # composition root: много параметров — норма
+# fast_depends резолвит аннотации обработчика через get_type_hints() в рантайме,
+# прятать их в TYPE_CHECKING нельзя. Декоратор тут — метод локального роутера,
+# и по имени ruff его не узнаёт, поэтому исключение файловое.
+"document_worker/presentation/messaging/subscribers/*.py" = ["TC001", "TC002", "TC003"]
 
 [tool.ruff.format]
 docstring-code-format = true
@@ -234,9 +238,6 @@ markers = [
 ]
 filterwarnings = [
     "error",
-    # testcontainers ругается на собственный декоратор ожидания готовности
-    # прямо при импорте модуля RabbitMQ; починить это может только он сам.
-    "ignore:The @wait_container_is_ready decorator is deprecated:DeprecationWarning",
 ]
 
 [tool.coverage.run]

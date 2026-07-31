@@ -88,9 +88,17 @@ class Topology:
     exchanges: tuple[RabbitExchange, ...]
     queues: tuple[RabbitQueue, ...]
     bindings: tuple[Binding, ...]
+    commands: RabbitExchange
+    retry: RabbitExchange
+    dead_letter_exchange: RabbitExchange
     process_requested: RabbitQueue
     retry_queues: Mapping[str, RabbitQueue]
     dead_letter: RabbitQueue
+
+    @property
+    def levels(self) -> tuple[str, ...]:
+        """Ступени задержки в порядке возрастания."""
+        return tuple(self.retry_queues)
 
 
 def build_topology(
@@ -120,10 +128,17 @@ def build_topology(
         exchanges=exchanges,
         queues=queues,
         bindings=_bindings(retry_ladder, declare_audit_queue=declare_audit_queue),
+        commands=_named(exchanges, COMMANDS_EXCHANGE),
+        retry=_named(exchanges, RETRY_EXCHANGE),
+        dead_letter_exchange=_named(exchanges, DLX_EXCHANGE),
         process_requested=process_requested,
         retry_queues=retry_queues,
         dead_letter=dead_letter,
     )
+
+
+def _named(exchanges: Sequence[RabbitExchange], name: str) -> RabbitExchange:
+    return next(exchange for exchange in exchanges if exchange.name == name)
 
 
 def _exchanges() -> tuple[RabbitExchange, ...]:
