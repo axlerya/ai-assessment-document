@@ -9,21 +9,20 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 import pytest
 from pydantic import ValidationError
 
-from document_worker.infrastructure.config.settings import AppSettings
-
-if TYPE_CHECKING:
-    from collections.abc import Iterator
+from document_worker.infrastructure.config.settings import (
+    AppSettings,
+    env_variable_names,
+)
 
 pytestmark = pytest.mark.unit
 
 REQUIRED_ENV = {
-    "DATABASE__DSN": "postgresql+asyncpg://worker:secret@postgres:5432/documents",
-    "RABBIT__URL": "amqp://worker:secret@rabbitmq:5672/documents",
+    "DATABASE__DSN": "postgresql+asyncpg://worker:db-password@postgres:5432/documents",
+    "RABBIT__URL": "amqp://worker:broker-password@rabbitmq:5672/documents",
     "S3__ENDPOINT_URL": "http://minio:9000",
     "S3__ACCESS_KEY": "minio-user",
     "S3__SECRET_KEY": "minio-password",
@@ -32,7 +31,7 @@ ENV_EXAMPLE = Path(__file__).resolve().parents[3] / ".env.example"
 
 
 @pytest.fixture
-def env(monkeypatch: pytest.MonkeyPatch) -> Iterator[pytest.MonkeyPatch]:
+def env(monkeypatch: pytest.MonkeyPatch) -> pytest.MonkeyPatch:
     """Окружение с обязательными переменными и без посторонних."""
     for name in REQUIRED_ENV:
         monkeypatch.delenv(name, raising=False)
@@ -74,7 +73,8 @@ def test_secrets_are_not_rendered(env: pytest.MonkeyPatch) -> None:
 
     rendered = repr(settings)
 
-    assert "secret" not in rendered
+    assert "db-password" not in rendered
+    assert "broker-password" not in rendered
     assert "minio-password" not in rendered
 
 
@@ -89,6 +89,18 @@ def test_timeouts_are_validated_together(env: pytest.MonkeyPatch) -> None:
     # Лиз захвата короче таймаута документа делает каждую повторную доставку
     # возобновлением параллельно живому воркеру.
     env.setenv("MESSAGING__CLAIM_LEASE_S", "60")
+    env.setenv("PROCESSING__DOCUMENT_TIMEOUT_S", "3600")
+
+    with pytest.raises(ValidationError):
+        AppSettings()
+
+
+def test_consumer_timeout_not_greater_than_document_timeout_is_rejected(
+    env: pytest.MonkeyPatch,
+) -> None:
+    # Таймер потребителя идёт с момента доставки: равные значения дают вечный
+    # цикл возвратов на самом длинном документе.
+    env.setenv("RABBIT__CONSUMER_TIMEOUT_MS", "3600000")
     env.setenv("PROCESSING__DOCUMENT_TIMEOUT_S", "3600")
 
     with pytest.raises(ValidationError):
@@ -128,15 +140,4 @@ def test_env_example_covers_every_variable(env: pytest.MonkeyPatch) -> None:
         )
     }
 
-    assert _variable_names(AppSettings()) <= documented
-
-
-def _variable_names(settings: AppSettings) -> set[str]:
-    names: set[str] = set()
-    for section, value in settings:
-        if not hasattr(value, "model_fields"):
-            continue
-        names |= {
-            f"{section.upper()}__{field.upper()}" for field in type(value).model_fields
-        }
-    return names
+    assert set(env_variable_names()) <= documented
