@@ -1,16 +1,57 @@
-"""Точка входа сервиса для `[project.scripts]`."""
+"""Точка входа сервиса.
+
+Остановка обязана быть аккуратной: брокер перестаёт брать новые сообщения,
+текущее доводится до конца, реле снимается, и только потом освобождаются
+соединения. Оборванная посередине обработка стоит документу лишней попытки,
+а при выкатке таких обрывов столько же, сколько подов.
+"""
 
 from __future__ import annotations
+
+import asyncio
+import contextlib
+from typing import TYPE_CHECKING
 
 import uvicorn
 
 from document_worker.bootstrap.app import create_app
+from document_worker.bootstrap.composition import build_services
+from document_worker.bootstrap.outbox import OutboxRelay, running
+from document_worker.infrastructure.config.settings import AppSettings
+from document_worker.infrastructure.health import BrokerProbe, DatabaseProbe
 
-# Станут полями AppSettings, когда появится слой конфигурации.
+if TYPE_CHECKING:
+    from document_worker.application.ports.health import HealthProbe
+
 HTTP_HOST = "0.0.0.0"  # noqa: S104 — в контейнере слушаем все интерфейсы
 HTTP_PORT = 8080
 
 
-def run() -> None:
-    """Запускает ASGI-приложение сервиса."""
-    uvicorn.run(create_app(), host=HTTP_HOST, port=HTTP_PORT, log_config=None)
+async def serve(
+    settings: AppSettings,
+) -> None:  # pragma: no cover — проверяется запуском контейнера
+    """Поднимает сервис и держит его до остановки."""
+    async with build_services(settings) as services:
+        probes: list[HealthProbe] = [
+            DatabaseProbe(engine=services.engine),
+            BrokerProbe(broker=services.broker),
+        ]
+        relay = OutboxRelay(
+            publish=services.publish_outbox, config=settings.processing_config().outbox
+        )
+        async with running(relay):
+            server = uvicorn.Server(
+                uvicorn.Config(
+                    create_app(services.broker, probes),
+                    host=HTTP_HOST,
+                    port=HTTP_PORT,
+                    log_config=None,
+                )
+            )
+            await server.serve()
+
+
+def run() -> None:  # pragma: no cover — проверяется запуском контейнера
+    """Запускает сервис."""
+    with contextlib.suppress(KeyboardInterrupt):
+        asyncio.run(serve(AppSettings()))
