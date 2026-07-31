@@ -38,6 +38,15 @@ class ProcessDocumentCommand:
     object_ref: ObjectRef
     mime_type: MimeType
     occurred_at: datetime
+    attempt: int = 1
+    # None означает «бюджет попыток не отслеживается»: команда собрана вне
+    # контура доставки и о лестнице повторов ничего не знает.
+    max_attempts: int | None = None
+
+    @property
+    def is_last_attempt(self) -> bool:
+        """Исчерпан ли бюджет повторов этой доставкой."""
+        return self.max_attempts is not None and self.attempt >= self.max_attempts
 
 
 @dataclass(frozen=True, slots=True)

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import timedelta
 from typing import TYPE_CHECKING
 
@@ -17,7 +18,7 @@ from document_worker.application.errors import (
 from document_worker.application.services.message_claim import MessageClaimService
 from document_worker.domain.value_objects.enums import DocumentStatus, JobStatus
 from document_worker.domain.value_objects.identifiers import EventId
-from document_worker.domain.value_objects.storage import ObjectRef
+from document_worker.domain.value_objects.storage import MimeType, ObjectRef
 from document_worker.infrastructure.persistence.mappers.document import document_to_row
 from document_worker.infrastructure.persistence.repositories.documents import (
     SqlAlchemyDocumentRepository,
@@ -184,6 +185,19 @@ async def test_claim_rejects_command_with_object_key_mismatch(
 
     with pytest.raises(InvalidCommandError):
         await service.claim(foreign)
+
+
+async def test_claim_rejects_command_with_mime_type_mismatch(
+    service: MessageClaimService,
+    session: AsyncSession,
+) -> None:
+    # Команда описывает не тот файл, что записан в строке документа: обработать
+    # по ней значит записать в документ содержимое другого.
+    document = await _persist(session, make_document())
+    command = replace(_command(document), mime_type=MimeType("image/png"))
+
+    with pytest.raises(InvalidCommandError):
+        await service.claim(command)
 
 
 async def test_claim_returns_reject_concurrent_for_live_lease(

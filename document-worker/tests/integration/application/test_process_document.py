@@ -30,7 +30,10 @@ from document_worker.application.use_cases.extract_document_text import (
 from document_worker.application.use_cases.fail_document_processing import (
     FailDocumentProcessing,
 )
-from document_worker.application.use_cases.process_document import ProcessDocument
+from document_worker.application.use_cases.process_document import (
+    RETRIES_EXHAUSTED,
+    ProcessDocument,
+)
 from document_worker.application.use_cases.process_document_page import (
     ProcessDocumentPage,
 )
@@ -451,3 +454,63 @@ async def test_processing_beyond_the_deadline_is_a_transient_error(
 
     stored = await _stored(uow_factory, document)
     assert stored.status is DocumentStatus.PROCESSING
+
+
+async def test_transient_error_on_the_last_attempt_fails_the_document(
+    session: AsyncSession,
+    wiring: Wiring,
+    uow_factory: UnitOfWorkFactory,
+    tmp_path: Path,
+) -> None:
+    # Лестница повторов исчерпана: держать документ в обработке дальше нечем,
+    # и отказ обязан быть зафиксирован до того, как сообщение уйдёт в DLQ.
+    document = await _document_with_source(session, wiring, tmp_path)
+    wiring.storage.fail_next(StorageUnavailableError("хранилище недоступно"))
+
+    result = await wiring.process.execute(_last_attempt(_command(document)))
+
+    assert result.status is DocumentStatus.FAILED
+    stored = await _stored(uow_factory, document)
+    assert stored.status is DocumentStatus.FAILED
+    assert stored.failure_code == RETRIES_EXHAUSTED
+
+
+async def test_transient_error_before_the_last_attempt_is_still_retried(
+    session: AsyncSession,
+    wiring: Wiring,
+    uow_factory: UnitOfWorkFactory,
+    tmp_path: Path,
+) -> None:
+    document = await _document_with_source(session, wiring, tmp_path)
+    wiring.storage.fail_next(StorageUnavailableError("хранилище недоступно"))
+    command = replace(_command(document), attempt=4, max_attempts=5)
+
+    with pytest.raises(StorageUnavailableError):
+        await wiring.process.execute(command)
+
+    stored = await _stored(uow_factory, document)
+    assert stored.status is DocumentStatus.PROCESSING
+
+
+async def test_live_lease_on_the_last_attempt_does_not_bury_the_document(
+    session: AsyncSession,
+    wiring: Wiring,
+    uow_factory: UnitOfWorkFactory,
+    tmp_path: Path,
+) -> None:
+    # Лиз держит другой воркер, и он, возможно, работает. Пометить документ
+    # отказом значит выбросить его результат: сообщение уходит в DLQ, а
+    # документ остаётся в обработке за живым владельцем.
+    document = await _document_with_source(session, wiring, tmp_path)
+    command = _command(document)
+    await wiring.process.claim_service.claim(command)
+
+    with pytest.raises(ConcurrentProcessingError):
+        await wiring.process.execute(_last_attempt(command))
+
+    stored = await _stored(uow_factory, document)
+    assert stored.status is DocumentStatus.PROCESSING
+
+
+def _last_attempt(command: ProcessDocumentCommand) -> ProcessDocumentCommand:
+    return replace(command, attempt=5, max_attempts=5)

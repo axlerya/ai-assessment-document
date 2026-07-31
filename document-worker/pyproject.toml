@@ -8,6 +8,7 @@ license = "MIT"
 authors = [{ name = "Александр Рябов", email = "alexander.ryabov.002@gmail.com" }]
 dependencies = [
     "faststream[rabbit]>=0.7.3,<0.8",
+    "pydantic>=2.13,<3",
     "uvicorn>=0.42,<0.43",
     "sqlalchemy[asyncio]>=2.0.51,<2.1",
     "asyncpg>=0.31.0,<0.32",
@@ -82,6 +83,9 @@ runtime-evaluated-base-classes = [
     # Mapped[...] резолвится SQLAlchemy в рантайме, а наследование от DeclarativeBase
     # ruff по цепочке не отслеживает — нужен именно наш Base.
     "document_worker.infrastructure.persistence.base.Base",
+    # Ruff не идёт по цепочке наследования, а контракты наследуются от своей
+    # базы, а не от BaseModel напрямую.
+    "document_worker.presentation.messaging.contracts.base.IncomingMessageBase",
 ]
 # fast_depends резолвит аннотации обработчика через get_type_hints() в рантайме,
 # поэтому их импорты нельзя прятать в блок TYPE_CHECKING.
