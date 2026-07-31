@@ -24,7 +24,12 @@ from document_worker.application.errors import (
     StorageUnavailableError,
     TransientError,
 )
+from document_worker.domain.value_objects.storage import ObjectRef
 from document_worker.infrastructure.storage.errors import translate_storage_error
+from document_worker.infrastructure.storage.s3_object_storage import (
+    S3Config,
+    S3ObjectStorage,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -115,3 +120,19 @@ def test_translated_error_carries_the_code_in_context() -> None:
     translated = translate_storage_error(_client_error("SlowDown", 503))
 
     assert translated.context["code"] == "SlowDown"
+
+
+async def test_storage_outside_its_context_is_an_error() -> None:
+    # Клиент живёт вместе с контекстом: обращение вне его — ошибка сборки
+    # приложения, а не хранилища.
+    storage = S3ObjectStorage(
+        S3Config(
+            endpoint_url=ENDPOINT,
+            region="us-east-1",
+            access_key="key",
+            secret_key="secret",  # noqa: S106 — конфигурация теста
+        )
+    )
+
+    with pytest.raises(RuntimeError, match="вне своего контекста"):
+        await storage.stat(ObjectRef(bucket="documents", key="a/source.pdf"))
