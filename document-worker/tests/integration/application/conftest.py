@@ -7,12 +7,14 @@
 
 from __future__ import annotations
 
+import uuid
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 import pytest
 
 from document_worker.application.config import ProcessingConfig, SourceConfig
+from document_worker.domain.value_objects.identifiers import DocumentId
 from document_worker.domain.value_objects.versioning import PipelineVersion
 from document_worker.infrastructure.persistence.unit_of_work import SqlAlchemyUnitOfWork
 from tests.fakes.system import FixedClock, SequentialIdGenerator
@@ -30,6 +32,12 @@ if TYPE_CHECKING:
 NOW = datetime(2026, 7, 31, 9, 0, tzinfo=UTC)
 PIPELINE_VERSION = PipelineVersion(1, 0, 0)
 CONSUMER = "worker-1"
+
+
+@pytest.fixture
+def document_id() -> DocumentId:
+    """Идентификатор документа, о котором идёт речь в тесте."""
+    return DocumentId(uuid.uuid4())
 
 
 @pytest.fixture

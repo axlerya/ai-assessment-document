@@ -19,6 +19,8 @@ from sqlalchemy.ext.asyncio import (
 )
 from testcontainers.community.postgres import PostgresContainer
 
+from document_worker.infrastructure.cpu.executor import CpuPool
+
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Iterator
 
@@ -134,3 +136,14 @@ async def session(
     """Сессия для тестов, которым нужны ORM-модели, а не голый SQL."""
     async with session_factory() as active:
         yield active
+
+
+@pytest_asyncio.fixture(scope="session", loop_scope="session")
+async def cpu_pool() -> AsyncIterator[CpuPool]:
+    """Пул процессов под синхронные вызовы PDF-библиотек.
+
+    Контекст `spawn` поднимает интерпретатор заново, поэтому пул один на весь
+    прогон: иначе каждый тест платил бы за старт процесса больше, чем за разбор.
+    """
+    async with CpuPool(max_workers=2) as pool:
+        yield pool
