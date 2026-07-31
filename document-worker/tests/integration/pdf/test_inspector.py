@@ -23,14 +23,16 @@ from tests.fakes import pdf_builder
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from document_worker.infrastructure.cpu.executor import CpuPool
+
 pytestmark = pytest.mark.integration
 
 PAGE_LIMIT = 300
 
 
 @pytest.fixture
-def inspector() -> PikePdfInspector:
-    return PikePdfInspector(max_pages=PAGE_LIMIT)
+def inspector(cpu_pool: CpuPool) -> PikePdfInspector:
+    return PikePdfInspector(pool=cpu_pool, max_pages=PAGE_LIMIT)
 
 
 def test_inspector_satisfies_its_port(inspector: PikePdfInspector) -> None:
@@ -122,9 +124,10 @@ async def test_zero_page_document_raises_permanent_error(
 
 
 async def test_page_count_above_limit_raises_permanent_error(
+    cpu_pool: CpuPool,
     tmp_path: Path,
 ) -> None:
-    inspector = PikePdfInspector(max_pages=2)
+    inspector = PikePdfInspector(pool=cpu_pool, max_pages=2)
     path = pdf_builder.make_text_pdf(tmp_path / "doc.pdf", pages=3)
 
     with pytest.raises(PageLimitExceededError):
