@@ -10,6 +10,7 @@ import pytest
 
 from document_worker.domain.entities.document import Document
 from document_worker.domain.errors import (
+    ChecksumMismatch,
     DocumentTooLarge,
     EmptyDocument,
     IncompletePageSet,
@@ -37,6 +38,7 @@ from document_worker.domain.value_objects.quality import (
     PageOutcome,
 )
 from document_worker.domain.value_objects.storage import (
+    Checksum,
     FileSize,
     MimeType,
     ObjectRef,
@@ -443,3 +445,24 @@ def test_complete_leaves_the_document_in_processing_after_refusal() -> None:
 
     assert document.status is DocumentStatus.PROCESSING
     assert document.pull_events() == ()
+
+
+def test_record_source_stores_what_the_download_showed() -> None:
+    # Строку создаёт сервис приёма файлов и фактических размера с суммой не
+    # знает: их выясняет скачивание, и без них успешный документ не сохранить.
+    document = _document()
+
+    document.record_source(size=FileSize(4096), checksum=Checksum.sha256_of(b"real"))
+
+    assert document.source.size == FileSize(4096)
+    assert document.source.checksum == Checksum.sha256_of(b"real")
+
+
+def test_record_source_rejects_a_checksum_other_than_declared() -> None:
+    document = _document()
+    document.record_source(size=FileSize(4096), checksum=Checksum.sha256_of(b"real"))
+
+    with pytest.raises(ChecksumMismatch):
+        document.record_source(
+            size=FileSize(4096), checksum=Checksum.sha256_of(b"other")
+        )
