@@ -14,12 +14,12 @@ from typing import TYPE_CHECKING
 import pytest
 
 from document_worker.application.errors import (
+    ChecksumMismatchError,
     DocumentTooLargeError,
     SourceObjectNotFoundError,
     StorageAccessDeniedError,
 )
 from document_worker.application.ports.object_storage import ObjectStorage
-from document_worker.domain.errors import ChecksumMismatch
 from document_worker.domain.value_objects.storage import Checksum, ObjectRef
 from document_worker.infrastructure.storage.s3_object_storage import S3ObjectStorage
 
@@ -150,7 +150,7 @@ async def test_download_raises_checksum_mismatch_for_wrong_expected_hash(
     _put(minio_client, source_bucket, object_key, CONTENT)
     destination = tmp_path / "source.pdf"
 
-    with pytest.raises(ChecksumMismatch):
+    with pytest.raises(ChecksumMismatchError):
         await storage.download_to(
             ObjectRef(bucket=source_bucket, key=object_key),
             destination,

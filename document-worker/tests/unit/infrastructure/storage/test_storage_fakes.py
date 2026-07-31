@@ -11,12 +11,12 @@ from typing import TYPE_CHECKING
 import pytest
 
 from document_worker.application.errors import (
+    ChecksumMismatchError,
     DocumentTooLargeError,
     SourceObjectNotFoundError,
     StorageUnavailableError,
 )
 from document_worker.application.ports.object_storage import ObjectStorage
-from document_worker.domain.errors import ChecksumMismatch
 from document_worker.domain.value_objects.storage import Checksum, ObjectRef
 from tests.fakes.storage import FlakyObjectStorage, InMemoryObjectStorage
 
@@ -86,7 +86,7 @@ async def test_download_checks_the_expected_checksum(
     storage: InMemoryObjectStorage,
     tmp_path: Path,
 ) -> None:
-    with pytest.raises(ChecksumMismatch):
+    with pytest.raises(ChecksumMismatchError):
         await storage.download_to(
             REF,
             tmp_path / "source.pdf",

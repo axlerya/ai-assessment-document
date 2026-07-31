@@ -22,11 +22,11 @@ from aiobotocore.config import AioConfig
 from botocore.exceptions import BotoCoreError, ClientError
 
 from document_worker.application.errors import (
+    ChecksumMismatchError,
     DocumentTooLargeError,
     SourceObjectNotFoundError,
 )
 from document_worker.application.ports.object_storage import ObjectStatDTO
-from document_worker.domain.errors import ChecksumMismatch
 from document_worker.domain.value_objects.storage import Checksum, ChecksumAlgorithm
 from document_worker.infrastructure.storage.errors import translate_storage_error
 
@@ -128,7 +128,7 @@ class S3ObjectStorage:
 
         Raises:
             DocumentTooLargeError: Объект больше допустимого предела.
-            ChecksumMismatch: Скачанное не совпало с заявленной суммой.
+            ChecksumMismatchError: Скачанное не совпало с заявленной суммой.
         """
         try:
             async with asyncio.timeout(timeout_s):
@@ -145,8 +145,13 @@ class S3ObjectStorage:
         checksum = Checksum(ChecksumAlgorithm.SHA256, digest)
         if expected_checksum is not None and not checksum.matches(expected_checksum):
             _remove(destination)
-            raise ChecksumMismatch(
-                expected=expected_checksum.value, actual=checksum.value
+            raise ChecksumMismatchError(
+                "контрольная сумма скачанного файла не совпала",
+                context={
+                    "expected": expected_checksum.value,
+                    "actual": checksum.value,
+                    "object_key": ref.key,
+                },
             )
         return checksum
 
