@@ -120,6 +120,13 @@ RE_SIGNATURE_LINE: Final = re.compile(
 
 RE_STAMP: Final = re.compile(r"^\s*М\.?\s?П\.?\s*$")
 
+RE_TERMINAL_PUNCT: Final = re.compile(r"[.!?;:…»\"')\]]\s*$")
+
+# Роль в подписном блоке — короткая строка без завершающей пунктуации. Без этой
+# оговорки «Исполнитель обязуется поставить товар в срок.» становится подписью,
+# а вместе с ней — неделимым блоком посреди договора.
+MAX_SIGNATURE_ROLE_CHARS: Final[int] = 60
+
 RE_TABLE_PIPE_ROW: Final = re.compile(r"^\s*\|.*\|\s*$")
 RE_TABLE_GAP_ROW: Final = re.compile(r"^\s*\S.*?(?:[ \t]{3,}\S+){2,}\s*$")
 RE_TABLE_SEPARATOR: Final = re.compile(r"^[\s|+\-=_]{5,}$")

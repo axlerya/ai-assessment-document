@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING
 
 from document_worker.domain.chunking.structure_rules import (
     MAX_HEADING_ILLEGIBLE_RATIO,
+    MAX_SIGNATURE_ROLE_CHARS,
     RE_APPENDIX,
     RE_ARTICLE,
     RE_BANK_ACCOUNT,
@@ -45,6 +46,7 @@ from document_worker.domain.chunking.structure_rules import (
     RE_TABLE_GAP_ROW,
     RE_TABLE_PIPE_ROW,
     RE_TABLE_SEPARATOR,
+    RE_TERMINAL_PUNCT,
     RE_UPPER_HEADING,
     TAB_WIDTH,
     TABLE_MIN_ROWS,
@@ -273,9 +275,23 @@ def _signature(stripped: str) -> _Mark | None:
     matched = (
         RE_STAMP.match(stripped) is not None
         or RE_SIGNATURE_LINE.search(stripped) is not None
-        or RE_SIGNATURE_ROLE.match(stripped) is not None
+        or _is_signature_role(stripped)
     )
     return _Mark(LineKind.SIGNATURE) if matched else None
+
+
+def _is_signature_role(stripped: str) -> bool:
+    """Роль стороны в подписном блоке, а не предложение о той же стороне.
+
+    Без оговорки о длине и пунктуации «Исполнитель обязуется поставить товар
+    в срок.» становится подписью и вместе с ней неделимым блоком.
+    """
+    if RE_SIGNATURE_ROLE.match(stripped) is None:
+        return False
+    return (
+        len(stripped) <= MAX_SIGNATURE_ROLE_CHARS
+        and RE_TERMINAL_PUNCT.search(stripped) is None
+    )
 
 
 def _numbered(text: str, stripped: str) -> _Mark | None:

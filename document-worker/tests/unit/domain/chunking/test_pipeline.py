@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pickle
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -14,15 +15,19 @@ from tests.unit.domain.chunking.support import (
     text_layer_page,
 )
 
+if TYPE_CHECKING:
+    from document_worker.domain.chunking.chunk_assembler import ChunkDraft
+    from document_worker.domain.entities.document_page import DocumentPage
+
 pytestmark = pytest.mark.unit
 
 POLICY = default_policy()
 CONTENT = "Статья 1. Предмет\nИсполнитель обязуется поставить товар в срок."
 
 
-def run(*pages: object) -> tuple[object, ...]:
+def run(*pages: DocumentPage) -> tuple[ChunkDraft, ...]:
     """Прогон конвейера на готовых страницах."""
-    return build_pipeline(POLICY, FakeTokenCounter()).run(list(pages))
+    return build_pipeline(POLICY, FakeTokenCounter()).run(pages)
 
 
 def test_pipeline_is_deterministic_for_same_input() -> None:

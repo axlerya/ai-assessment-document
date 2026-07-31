@@ -63,8 +63,11 @@ class ChunkQualityEvaluator:
         total = span.length
         ratio = illegible_chars / total if total else 0.0
         legible = _legible_char_count(page, span)
-        fully_illegible = (
-            ratio >= CHUNK_ILLEGIBLE_RATIO_THRESHOLD or legible < MIN_LEGIBLE_CHARS
+        # Порог читаемых символов применим только там, где неразборчивость
+        # вообще есть: чистый короткий чанк не нечитаем, он просто короткий,
+        # и это решает порог токенов.
+        fully_illegible = ratio >= CHUNK_ILLEGIBLE_RATIO_THRESHOLD or (
+            bool(overlaps) and legible < MIN_LEGIBLE_CHARS
         )
         confidence = _average_confidence(page, total=total, overlaps=overlaps)
         return ChunkQuality(

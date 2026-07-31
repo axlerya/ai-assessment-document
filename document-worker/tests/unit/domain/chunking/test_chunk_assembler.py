@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import math
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -19,6 +20,9 @@ from tests.unit.domain.chunking.support import (
     default_policy,
     text_layer_page,
 )
+
+if TYPE_CHECKING:
+    from document_worker.domain.chunking.chunk_assembler import ChunkDraft
 
 pytestmark = pytest.mark.unit
 
@@ -34,7 +38,7 @@ SENTENCES = (
 )
 
 
-def drafts_of(*contents: str) -> tuple[object, ...]:
+def drafts_of(*contents: str) -> tuple[ChunkDraft, ...]:
     """Черновики чанков для страниц с заданными текстами."""
     pages = [
         text_layer_page(content, number=number)
