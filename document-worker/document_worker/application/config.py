@@ -134,7 +134,6 @@ class ProcessingConfig:
     consumer_name: str
     document_timeout_s: float
     claim_lease_s: int = 900
-    job_heartbeat_every_pages: int = 5
     source: SourceConfig = field(default_factory=SourceConfig)
     ocr: OcrConfig = field(default_factory=OcrConfig)
     tx: TransactionConfig = field(default_factory=TransactionConfig)
@@ -144,6 +143,5 @@ class ProcessingConfig:
         """Проверяет таймаут документа и параметры лиза."""
         _require_positive(self.document_timeout_s, "document_timeout_s")
         _require_positive(self.claim_lease_s, "claim_lease_s")
-        _require_positive(self.job_heartbeat_every_pages, "job_heartbeat_every_pages")
         if not self.consumer_name:
             raise InvariantViolation("имя потребителя пустое")

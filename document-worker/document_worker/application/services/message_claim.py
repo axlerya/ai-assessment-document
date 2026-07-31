@@ -41,6 +41,9 @@ class ClaimResult:
 
     outcome: ClaimOutcome
     document: Document
+    # Прогон открыт вместе с захватом, и запрашивать его заново на каждой
+    # странице значило бы ходить в базу за уже известным.
+    job: ProcessingJob | None = None
     persisted_page_numbers: frozenset[int] = frozenset()
     attempts: int = 1
 
@@ -90,11 +93,12 @@ class MessageClaimService:
                     attempts=claimed.attempts,
                 )
 
-            await self._start_processing(uow, command, now)
+            job = await self._start_processing(uow, command, now)
             await uow.commit()
             return ClaimResult(
                 outcome=claimed.outcome,
                 document=document,
+                job=job,
                 persisted_page_numbers=claimed.persisted_page_numbers,
                 attempts=claimed.attempts,
             )
@@ -161,7 +165,7 @@ class MessageClaimService:
         uow: UnitOfWork,
         command: ProcessDocumentCommand,
         now: datetime,
-    ) -> None:
+    ) -> ProcessingJob:
         await uow.documents.start_processing(
             command.document_id,
             pipeline_version=self.config.pipeline_version,
@@ -179,4 +183,4 @@ class MessageClaimService:
         # пуста по построению, а строка `queued` без исполнителя ничего не
         # значит и требовала бы второго перехода.
         job.start(now=now)
-        await uow.jobs.start(job)
+        return await uow.jobs.start(job)

@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Self
+
+from document_worker.domain.value_objects.enums import ExtractionMethod
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -13,7 +15,7 @@ if TYPE_CHECKING:
     from document_worker.domain.value_objects.confidence import OcrConfidence
     from document_worker.domain.value_objects.enums import (
         DocumentStatus,
-        ExtractionMethod,
+        PageFailureReason,
         PageStatus,
     )
     from document_worker.domain.value_objects.identifiers import (
@@ -41,6 +43,13 @@ class MessageOutcome(StrEnum):
     PROCESSED = "processed"
     PARTIALLY_PROCESSED = "partially_processed"
     FAILED = "failed"
+
+
+class TerminalOutcome(StrEnum):
+    """Записан ли терминальный результат или его уже записал другой воркер."""
+
+    APPLIED = "applied"
+    DUPLICATE = "duplicate"
 
 
 @dataclass(frozen=True, slots=True)
@@ -81,18 +90,31 @@ class PageSummaryDTO:
 
 @dataclass(frozen=True, slots=True)
 class JobProgressDTO:
-    """Прогресс прогона для периодической записи.
+    """Приращение прогресса прогона.
 
-    Счётчики по способам, а не суммарный: строка прогона хранит именно это
-    разбиение, а восстановить его из суммы нельзя.
+    Приращение, а не итог: воркер, продолживший чужую работу, знает только свои
+    страницы, и запись итогов затёрла бы чужие. Счётчики по способам, а не один
+    суммарный: строка прогона хранит именно это разбиение, а восстановить его
+    из суммы нельзя.
     """
 
-    pages_text_layer: int
-    pages_ocr: int
-    pages_hybrid: int
-    pages_failed: int
-    chunks_created: int
     heartbeat_at: datetime
+    pages_text_layer: int = 0
+    pages_ocr: int = 0
+    pages_hybrid: int = 0
+    pages_failed: int = 0
+    chunks_created: int = 0
+
+    @classmethod
+    def for_page(cls, method: ExtractionMethod, *, at: datetime) -> Self:
+        """Приращение на одну прочитанную страницу."""
+        return cls(
+            heartbeat_at=at,
+            pages_text_layer=int(method is ExtractionMethod.TEXT_LAYER),
+            pages_ocr=int(method is ExtractionMethod.OCR),
+            pages_hybrid=int(method is ExtractionMethod.HYBRID),
+            pages_failed=int(method is ExtractionMethod.NONE),
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -124,6 +146,40 @@ class OutboxRecordDTO:
 
 
 @dataclass(frozen=True, slots=True)
+class ProcessDocumentPageResult:
+    """Итог одной страницы."""
+
+    number: PageNumber
+    page_id: PageId
+    status: PageStatus
+    method: ExtractionMethod
+    confidence: OcrConfidence | None
+    char_count: int
+    failure_reason: PageFailureReason | None
+    persisted: bool
+
+
+@dataclass(frozen=True, slots=True)
+class CompleteDocumentProcessingResult:
+    """Итог терминальной транзакции успеха."""
+
+    terminal: TerminalOutcome
+    status: DocumentStatus
+    event_type: str | None
+    events_enqueued: int
+    pages_total: int
+    pages_failed: int
+
+
+@dataclass(frozen=True, slots=True)
+class FailDocumentProcessingResult:
+    """Итог терминальной транзакции отказа."""
+
+    terminal: TerminalOutcome
+    events_enqueued: int = 0
+
+
+@dataclass(frozen=True, slots=True)
 class ProcessDocumentResult:
     """Итог обработки одного сообщения."""
 
@@ -131,4 +187,7 @@ class ProcessDocumentResult:
     status: DocumentStatus
     pages_total: int
     chunks_total: int
+    # Страницы, прочитанные именно этим прогоном: на возобновлении их меньше,
+    # чем в документе, и по разнице видно, что возобновление сработало.
+    pages_processed: int = 0
     duplicate: bool = False

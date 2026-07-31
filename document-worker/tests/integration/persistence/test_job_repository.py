@@ -21,6 +21,7 @@ if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
     from document_worker.domain.entities.document import Document
+    from document_worker.domain.entities.processing_job import ProcessingJob
 
 pytestmark = pytest.mark.integration
 
@@ -33,6 +34,10 @@ async def _document(session: AsyncSession) -> Document:
     session.add(document_to_row(document))
     await session.flush()
     return document
+
+
+def _fresh_job(document: Document) -> ProcessingJob:
+    return make_job(document, status=JobStatus.QUEUED, pages_total=None)
 
 
 async def test_start_creates_the_job(session: AsyncSession) -> None:
@@ -76,14 +81,12 @@ async def test_record_progress_writes_counters_and_heartbeat(
 ) -> None:
     document = await _document(session)
     repository = SqlAlchemyProcessingJobRepository(session)
-    job = await repository.start(make_job(document, status=JobStatus.QUEUED))
+    job = await repository.start(_fresh_job(document))
 
     await repository.record_progress(
         job.id,
         JobProgressDTO(
             pages_text_layer=1,
-            pages_ocr=0,
-            pages_hybrid=0,
             pages_failed=1,
             chunks_created=9,
             heartbeat_at=LATER,
@@ -95,6 +98,29 @@ async def test_record_progress_writes_counters_and_heartbeat(
     assert (stored.pages_text_layer, stored.pages_ocr, stored.pages_hybrid) == (1, 0, 0)
     assert stored.pages_failed == 1
     assert stored.chunks_created == 9
+
+
+async def test_record_progress_adds_up_across_calls(session: AsyncSession) -> None:
+    # Воркер, продолживший чужую работу, знает только свои страницы: запись
+    # итогов затёрла бы чужие, поэтому пишется приращение.
+    document = await _document(session)
+    repository = SqlAlchemyProcessingJobRepository(session)
+    job = await repository.start(_fresh_job(document))
+
+    for _ in range(3):
+        await repository.record_progress(
+            job.id,
+            JobProgressDTO(pages_text_layer=1, heartbeat_at=LATER),
+        )
+    await repository.record_progress(
+        job.id,
+        JobProgressDTO(pages_failed=1, heartbeat_at=LATER),
+    )
+
+    stored = await repository.get(document.id, PIPELINE_VERSION)
+    assert stored is not None
+    assert stored.pages_text_layer == 3
+    assert stored.pages_failed == 1
 
 
 async def test_finish_writes_terminal_status(session: AsyncSession) -> None:

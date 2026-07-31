@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import uuid
 from datetime import UTC, datetime, timedelta
 
@@ -9,6 +10,7 @@ import pytest
 
 from document_worker.domain.entities.document import Document
 from document_worker.domain.errors import (
+    ChecksumMismatch,
     DocumentTooLarge,
     EmptyDocument,
     IncompletePageSet,
@@ -36,6 +38,7 @@ from document_worker.domain.value_objects.quality import (
     PageOutcome,
 )
 from document_worker.domain.value_objects.storage import (
+    Checksum,
     FileSize,
     MimeType,
     ObjectRef,
@@ -112,6 +115,19 @@ def _partial_verdict() -> DocumentStatusVerdict:
         stats=_stats(*outcomes),
         reasons=("страница 2 не прочитана",),
         failed_pages=(PageNumber(2),),
+    )
+
+
+def _failed_verdict() -> DocumentStatusVerdict:
+    outcomes = [
+        _outcome(1, PageStatus.FAILED, ExtractionMethod.NONE),
+        _outcome(2, PageStatus.FAILED, ExtractionMethod.NONE),
+    ]
+    return DocumentStatusVerdict(
+        status=DocumentStatus.FAILED,
+        stats=_stats(*outcomes),
+        reasons=("too_many_failed_pages",),
+        failed_pages=(PageNumber(1), PageNumber(2)),
     )
 
 
@@ -410,3 +426,43 @@ def _unversioned() -> Document:
         created_at=CREATED_AT,
         updated_at=CREATED_AT,
     )
+
+
+def test_complete_refuses_an_unsuccessful_verdict() -> None:
+    # Иначе документ с вердиктом «отказ» получил бы статус failed и событие
+    # о частичной обработке: успех и отказ пишутся разными путями.
+    document = _processing()
+
+    with pytest.raises(InvariantViolation):
+        document.complete(_failed_verdict(), chunks_total=0, now=FINISHED_AT)
+
+
+def test_complete_leaves_the_document_in_processing_after_refusal() -> None:
+    document = _processing()
+
+    with contextlib.suppress(InvariantViolation):
+        document.complete(_failed_verdict(), chunks_total=0, now=FINISHED_AT)
+
+    assert document.status is DocumentStatus.PROCESSING
+    assert document.pull_events() == ()
+
+
+def test_record_source_stores_what_the_download_showed() -> None:
+    # Строку создаёт сервис приёма файлов и фактических размера с суммой не
+    # знает: их выясняет скачивание, и без них успешный документ не сохранить.
+    document = _document()
+
+    document.record_source(size=FileSize(4096), checksum=Checksum.sha256_of(b"real"))
+
+    assert document.source.size == FileSize(4096)
+    assert document.source.checksum == Checksum.sha256_of(b"real")
+
+
+def test_record_source_rejects_a_checksum_other_than_declared() -> None:
+    document = _document()
+    document.record_source(size=FileSize(4096), checksum=Checksum.sha256_of(b"real"))
+
+    with pytest.raises(ChecksumMismatch):
+        document.record_source(
+            size=FileSize(4096), checksum=Checksum.sha256_of(b"other")
+        )

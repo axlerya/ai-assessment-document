@@ -59,16 +59,22 @@ class SqlAlchemyProcessingJobRepository(SqlAlchemyRepository):
         return existing
 
     async def record_progress(self, job_id: JobId, progress: JobProgressDTO) -> None:
-        """Записывает прогресс и heartbeat."""
+        """Прибавляет приращение прогресса и двигает heartbeat.
+
+        Счётчики складываются в самой базе: воркер, продолживший чужую работу,
+        своих предшественников не видел и записью итогов затёр бы их.
+        """
         statement = (
             update(ProcessingJobRow)
             .where(ProcessingJobRow.id == job_id.value)
             .values(
-                pages_text_layer=progress.pages_text_layer,
-                pages_ocr=progress.pages_ocr,
-                pages_hybrid=progress.pages_hybrid,
-                pages_failed=progress.pages_failed,
-                chunks_created=progress.chunks_created,
+                pages_text_layer=ProcessingJobRow.pages_text_layer
+                + progress.pages_text_layer,
+                pages_ocr=ProcessingJobRow.pages_ocr + progress.pages_ocr,
+                pages_hybrid=ProcessingJobRow.pages_hybrid + progress.pages_hybrid,
+                pages_failed=ProcessingJobRow.pages_failed + progress.pages_failed,
+                chunks_created=ProcessingJobRow.chunks_created
+                + progress.chunks_created,
                 heartbeat_at=progress.heartbeat_at,
                 updated_at=progress.heartbeat_at,
             )

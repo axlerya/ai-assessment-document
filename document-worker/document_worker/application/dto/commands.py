@@ -7,14 +7,25 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from datetime import datetime
+    from pathlib import Path
 
+    from document_worker.application.dto.extraction import (
+        DocumentExtraction,
+        PagePlanEntryDTO,
+    )
+    from document_worker.domain.value_objects.enums import ProcessingStage
     from document_worker.domain.value_objects.identifiers import (
         CorrelationId,
         DocumentId,
         EventId,
+        JobId,
     )
-    from document_worker.domain.value_objects.paging import PageNumber
-    from document_worker.domain.value_objects.storage import MimeType, ObjectRef
+    from document_worker.domain.value_objects.storage import (
+        Checksum,
+        FileSize,
+        MimeType,
+        ObjectRef,
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -35,7 +46,7 @@ class ExtractDocumentTextCommand:
 
     document_id: DocumentId
     correlation_id: CorrelationId
-    source_path: str
+    source_path: Path
 
 
 @dataclass(frozen=True, slots=True)
@@ -44,8 +55,9 @@ class ProcessDocumentPageCommand:
 
     document_id: DocumentId
     correlation_id: CorrelationId
-    page_number: PageNumber
-    source_path: str
+    job_id: JobId
+    entry: PagePlanEntryDTO
+    extraction: DocumentExtraction
 
 
 @dataclass(frozen=True, slots=True)
@@ -63,6 +75,13 @@ class CompleteDocumentProcessingCommand:
     document_id: DocumentId
     correlation_id: CorrelationId
     event_id: EventId
+    job_id: JobId
+    page_count: int
+    chunks_total: int
+    # Размер и сумма выясняются скачиванием, а строку документа создаёт сервис
+    # приёма файлов и их не знает.
+    source_size: FileSize
+    source_checksum: Checksum
 
 
 @dataclass(frozen=True, slots=True)
@@ -72,8 +91,11 @@ class FailDocumentProcessingCommand:
     document_id: DocumentId
     correlation_id: CorrelationId
     event_id: EventId
+    job_id: JobId
     error_code: str
     error_message: str
+    stage: ProcessingStage
+    pages_persisted: int = 0
 
 
 @dataclass(frozen=True, slots=True)

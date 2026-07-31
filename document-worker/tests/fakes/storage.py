@@ -31,7 +31,12 @@ class InMemoryObjectStorage:
         """Создаёт пустое хранилище."""
         self._objects: dict[tuple[str, str], bytes] = {}
         self._content_type = content_type
+        self._next_error: Exception | None = None
         self.downloads: list[ObjectRef] = []
+
+    def fail_next(self, error: Exception) -> None:
+        """Роняет следующее обращение к хранилищу и починится сам."""
+        self._next_error = error
 
     def put(self, ref: ObjectRef, payload: bytes) -> None:
         """Кладёт объект в хранилище."""
@@ -39,6 +44,7 @@ class InMemoryObjectStorage:
 
     async def stat(self, ref: ObjectRef) -> ObjectStatDTO:
         """Метаданные объекта."""
+        self._raise_if_armed()
         payload = self._payload_of(ref)
         return ObjectStatDTO(
             size_bytes=len(payload),
@@ -80,6 +86,11 @@ class InMemoryObjectStorage:
             )
         destination.write_bytes(payload)
         return Checksum(ChecksumAlgorithm.SHA256, checksum.value)
+
+    def _raise_if_armed(self) -> None:
+        if self._next_error is not None:
+            error, self._next_error = self._next_error, None
+            raise error
 
     def _payload_of(self, ref: ObjectRef) -> bytes:
         try:
