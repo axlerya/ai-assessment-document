@@ -15,6 +15,10 @@ dependencies = [
     "aioboto3>=15.5.0,<16",
     "aiobotocore>=2.25,<3",
     "botocore>=1.40,<2",
+    "pdfplumber>=0.11.10,<0.12",
+    "pypdfium2>=5.12.1,<6",
+    "pikepdf>=10.10.0,<11",
+    "pillow>=12.3.0,<13",
 ]
 
 [project.scripts]
@@ -115,6 +119,11 @@ enable_error_code = ["redundant-expr", "possibly-undefined", "truthy-bool", "tru
 [[tool.mypy.overrides]]
 module = ["tests.*"]
 disallow_untyped_decorators = false
+
+# У pypdfium2 и pdfplumber нет py.typed; стабов в typeshed тоже нет.
+[[tool.mypy.overrides]]
+module = ["pypdfium2.*", "pdfplumber.*"]
+ignore_missing_imports = true
 
 [tool.pydantic-mypy]
 init_forbid_extra = true
@@ -225,7 +234,7 @@ filterwarnings = ["error"]
 source = ["document_worker"]
 branch = true
 parallel = true
-concurrency = ["thread", "greenlet"]
+concurrency = ["thread", "greenlet", "multiprocessing"]
 omit = ["*/migrations/*", "*/__main__.py"]
 
 [tool.coverage.report]
@@ -244,4 +253,5 @@ exclude_also = [
 known_first_party = ["document_worker"]
 
 [tool.deptry.per_rule_ignores]
-DEP002 = ["uvicorn", "asyncpg"]   # нужны рантайму, в коде не импортируются
+# pillow нужен pypdfium2 для to_pil(); напрямую его импортируют только тесты
+DEP002 = ["uvicorn", "asyncpg", "pillow"]
