@@ -239,15 +239,12 @@ class ChunkAssembler:
         page: DocumentPage,
         chunks: Sequence[Block],
     ) -> tuple[ChunkDraft, ...]:
-        content = page.text.content
+        """Блоки уже обрезаны по краям, поэтому пустой чанк непредставим."""
         drafts: list[ChunkDraft] = []
         previous: tuple[Block, ChunkDraft] | None = None
         for chunk in chunks:
             overlap = self._overlap_for(page, chunk, previous)
             span = TextSpan(chunk.span.start - overlap, chunk.span.end)
-            text = span.slice_of(content)
-            if not text.strip():
-                continue
             draft = self._draft(page, chunk, span=span, ordinal=len(drafts))
             drafts.append(draft)
             previous = (chunk, draft)

@@ -104,3 +104,10 @@ def test_blocks_never_span_two_sections() -> None:
     blocks = blocks_of("1.1 Первый пункт\n1.2 Второй пункт")
 
     assert len(blocks) == 2
+
+
+def test_leading_blank_lines_do_not_create_a_block() -> None:
+    blocks = blocks_of("\n\nАбзац договора.")
+
+    assert len(blocks) == 1
+    assert blocks[0][1] == "Абзац договора."

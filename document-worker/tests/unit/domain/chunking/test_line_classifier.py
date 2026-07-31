@@ -120,6 +120,21 @@ def test_detects_role_line_as_signature() -> None:
     assert kind_of("Генеральный директор") is LineKind.SIGNATURE
 
 
+def test_detects_bullet_item() -> None:
+    assert kind_of("— поставка товара в срок") is LineKind.BULLET
+
+
+def test_page_of_very_short_lines_is_classified() -> None:
+    # Судить о регистре страницы не по чему: делить на ноль нельзя.
+    page = text_layer_page("Да\nНет\nОк")
+
+    assert [line.kind for line in CLASSIFIER.classify_page(page)] == [
+        LineKind.TEXT,
+        LineKind.TEXT,
+        LineKind.TEXT,
+    ]
+
+
 def test_detects_pipe_table_row() -> None:
     assert kind_of("| Наименование | Цена |") is LineKind.TABLE_ROW
 
@@ -138,6 +153,29 @@ def test_gap_row_is_table_only_in_series_of_at_least_two() -> None:
     assert [line.kind for line in CLASSIFIER.classify_page(series)[1:3]] == [
         LineKind.TABLE_ROW,
         LineKind.TABLE_ROW,
+    ]
+
+
+def test_gap_rows_at_the_end_of_page_still_form_a_table() -> None:
+    page = text_layer_page(f"{PREFIX}\nБумага   120   40\nРучка   80   20")
+
+    assert [line.kind for line in CLASSIFIER.classify_page(page)[1:]] == [
+        LineKind.TABLE_ROW,
+        LineKind.TABLE_ROW,
+    ]
+
+
+def test_row_with_other_column_count_starts_its_own_series() -> None:
+    # Подписной блок под таблицей — не её продолжение: одиночная строка с
+    # другим числом колонок таблицей не становится.
+    page = text_layer_page(
+        f"{PREFIX}\nБумага   120   40\nРучка   80   20\nа   б   в   г   д   е\n{SUFFIX}"
+    )
+
+    assert [line.kind for line in CLASSIFIER.classify_page(page)[1:4]] == [
+        LineKind.TABLE_ROW,
+        LineKind.TABLE_ROW,
+        LineKind.TEXT,
     ]
 
 

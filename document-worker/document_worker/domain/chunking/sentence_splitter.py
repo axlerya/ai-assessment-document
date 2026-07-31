@@ -27,10 +27,8 @@ class SentenceSplitter:
 
 
 def _is_false_boundary(text: str, at: int) -> bool:
-    word = text[:at].rstrip().rsplit(maxsplit=1)
-    if not word:
-        return False
-    last = word[-1]
+    # Слово перед границей есть всегда: кандидат требует знака препинания слева.
+    last = text[:at].rstrip().rsplit(maxsplit=1)[-1]
     return (
         last.lower() in ABBREVIATIONS
         or RE_INITIAL.match(last) is not None

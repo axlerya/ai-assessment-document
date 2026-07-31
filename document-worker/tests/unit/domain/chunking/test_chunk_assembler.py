@@ -132,7 +132,9 @@ def test_table_chunk_is_never_merged_with_paragraph() -> None:
 
 
 def test_table_longer_than_max_tokens_splits_on_row_boundaries() -> None:
-    rows = "\n".join(f"| Позиция {number} | 100 |" for number in range(12))
+    # Строки с отступом: разрез идёт сразу за переводом строки, и без обрезки
+    # края следующая часть начиналась бы с пробелов.
+    rows = "\n".join(f"  | Позиция {number} | 100 |" for number in range(12))
 
     drafts = drafts_of(rows)
 
@@ -199,6 +201,46 @@ def test_single_long_line_without_paragraphs_yields_multiple_chunks() -> None:
 
 def test_blank_chunks_are_dropped() -> None:
     assert drafts_of("   \n\n  \t ") == ()
+
+
+def test_two_short_paragraphs_of_one_section_become_one_chunk() -> None:
+    drafts = drafts_of("Первый абзац.\n\nВторой абзац.")
+
+    assert len(drafts) == 1
+    assert drafts[0].text == "Первый абзац.\n\nВторой абзац."
+
+
+def test_merges_short_paragraph_with_its_neighbour() -> None:
+    drafts = drafts_of("а" * 100 + "\n\nДа и всё.")
+
+    assert len(drafts) == 1
+    assert drafts[0].text.endswith("Да и всё.")
+
+
+def test_falls_back_to_word_boundaries_when_a_sentence_is_too_long() -> None:
+    # Предложение длиннее предела: резать по границам предложений нечем,
+    # и каскад спускается на уровень слов.
+    long_sentence = "Слово" + " слово" * 40 + "."
+
+    drafts = drafts_of(f"{long_sentence} Второе предложение здесь.")
+
+    assert len(drafts) > 1
+    assert all(draft.token_count <= SMALL_POLICY.max_tokens for draft in drafts)
+
+
+def test_overlap_is_refused_when_sentence_is_longer_than_the_char_cap() -> None:
+    # Предложение целиком не влезает в потолок перекрытия, а резать его пополам
+    # запрещено: перекрытия нет вовсе.
+    policy = default_policy(
+        target_tokens=250, max_tokens=300, min_tokens=200, overlap_tokens=150
+    )
+    sentence = "Слово" + " слово" * 73 + "."
+    page = text_layer_page(" ".join([sentence] * 4))
+
+    drafts = build_pipeline(policy, FakeTokenCounter()).run([page])
+
+    assert len(drafts) > 1
+    assert all(draft.overlap_prefix_chars == 0 for draft in drafts)
 
 
 def test_fitting_prefix_uses_logarithmic_number_of_count_calls() -> None:

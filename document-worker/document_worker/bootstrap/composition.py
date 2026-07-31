@@ -24,6 +24,9 @@ from document_worker.application.services.source_loader import SourceDocumentLoa
 from document_worker.application.use_cases.complete_document_processing import (
     CompleteDocumentProcessing,
 )
+from document_worker.application.use_cases.create_document_chunks import (
+    CreateDocumentChunks,
+)
 from document_worker.application.use_cases.extract_document_text import (
     ExtractDocumentText,
 )
@@ -40,6 +43,7 @@ from document_worker.application.use_cases.publish_outbox_events import (
 from document_worker.domain.normalization.normalizer import TextNormalizer
 from document_worker.domain.policies.document_status import DocumentStatusPolicy
 from document_worker.domain.policies.text_layer_quality import TextLayerQualityPolicy
+from document_worker.infrastructure.chunking.runner import CpuPoolChunkingRunner
 from document_worker.infrastructure.cpu.executor import CpuPool
 from document_worker.infrastructure.messaging.broker import build_broker
 from document_worker.infrastructure.messaging.declare import declare_topology
@@ -152,6 +156,13 @@ async def build_services(settings: AppSettings) -> AsyncIterator[Services]:
                     clock=clock,
                     config=config,
                 )
+            ),
+            create_chunks=CreateDocumentChunks(
+                uow_factory=uow_factory,
+                chunker=CpuPoolChunkingRunner(pool=pool),
+                ids=ids,
+                clock=clock,
+                config=config,
             ),
             complete=CompleteDocumentProcessing(
                 uow_factory=uow_factory,

@@ -24,6 +24,9 @@ from document_worker.application.services.source_loader import SourceDocumentLoa
 from document_worker.application.use_cases.complete_document_processing import (
     CompleteDocumentProcessing,
 )
+from document_worker.application.use_cases.create_document_chunks import (
+    CreateDocumentChunks,
+)
 from document_worker.application.use_cases.extract_document_text import (
     ExtractDocumentText,
 )
@@ -42,6 +45,7 @@ from document_worker.domain.policies.document_status import DocumentStatusPolicy
 from document_worker.domain.policies.text_layer_quality import TextLayerQualityPolicy
 from document_worker.domain.value_objects.enums import DocumentStatus, PageStatus
 from document_worker.domain.value_objects.identifiers import EventId
+from document_worker.infrastructure.chunking.runner import CpuPoolChunkingRunner
 from document_worker.infrastructure.pdf.pdfplumber_text_reader import (
     PdfPlumberDocumentReader,
 )
@@ -133,6 +137,13 @@ def wiring(  # noqa: PLR0913, PLR0917 — оркестратор собирае�
                 clock=clock,
                 config=config,
             )
+        ),
+        create_chunks=CreateDocumentChunks(
+            uow_factory=watched_factory,
+            chunker=CpuPoolChunkingRunner(pool=cpu_pool),
+            ids=ids,
+            clock=clock,
+            config=config,
         ),
         complete=CompleteDocumentProcessing(
             uow_factory=watched_factory,

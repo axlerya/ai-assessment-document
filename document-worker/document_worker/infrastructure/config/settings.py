@@ -28,8 +28,16 @@ from document_worker.application.config import (
     SourceConfig,
     TransactionConfig,
 )
+from document_worker.domain.chunking.policy import (
+    CHUNKING_VERSION,
+    DEFAULT_CHUNKING_POLICY,
+    ChunkingPolicy,
+)
 from document_worker.domain.constants import MAX_FILE_SIZE_BYTES, MAX_PAGES
-from document_worker.domain.value_objects.versioning import PipelineVersion
+from document_worker.domain.value_objects.versioning import (
+    ChunkingVersion,
+    PipelineVersion,
+)
 
 SECRETS_DIR = Path("/run/secrets")
 DEFAULT_TEMP_SUBDIR = "document-worker"
@@ -97,6 +105,36 @@ class ProcessingSettings(Section):
     pipeline_version: str = "1.0.0"
 
 
+class ChunkingSettings(Section):
+    """Версия чанкования и бюджет токенов чанка."""
+
+    version: str = str(CHUNKING_VERSION)
+    encoding: str = DEFAULT_CHUNKING_POLICY.encoding
+    target_tokens: Positive = DEFAULT_CHUNKING_POLICY.target_tokens
+    max_tokens: Positive = DEFAULT_CHUNKING_POLICY.max_tokens
+    min_tokens: Positive = DEFAULT_CHUNKING_POLICY.min_tokens
+    overlap_tokens: int = Field(default=DEFAULT_CHUNKING_POLICY.overlap_tokens, ge=0)
+
+    def policy(self) -> ChunkingPolicy:
+        """Собирает политику и требует, чтобы её версия знала эти параметры.
+
+        Raises:
+            InvalidChunkingPolicy: Бюджет противоречив либо изменён без
+                инкремента версии — чанки разных границ иначе попали бы в один
+                namespace chunking_version.
+        """
+        policy = ChunkingPolicy(
+            version=ChunkingVersion.parse(self.version),
+            encoding=self.encoding,
+            target_tokens=self.target_tokens,
+            max_tokens=self.max_tokens,
+            min_tokens=self.min_tokens,
+            overlap_tokens=self.overlap_tokens,
+        )
+        policy.ensure_registered()
+        return policy
+
+
 class MessagingSettings(Section):
     """Идемпотентность доставки и имя потребителя."""
 
@@ -129,6 +167,7 @@ class AppSettings(BaseSettings):
     rabbit: RabbitSettings
     s3: S3Settings
     processing: ProcessingSettings = ProcessingSettings()
+    chunking: ChunkingSettings = ChunkingSettings()
     messaging: MessagingSettings = MessagingSettings()
     outbox: OutboxSettings = OutboxSettings()
 
@@ -162,6 +201,7 @@ class AppSettings(BaseSettings):
             consumer_name=self.messaging.consumer_name,
             document_timeout_s=self.processing.document_timeout_s,
             claim_lease_s=self.messaging.claim_lease_s,
+            chunking=self.chunking.policy(),
             source=SourceConfig(
                 max_file_size_bytes=self.processing.max_file_size_bytes,
                 max_pages=self.processing.max_pages,

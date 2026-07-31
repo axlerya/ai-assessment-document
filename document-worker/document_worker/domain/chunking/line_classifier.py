@@ -98,11 +98,6 @@ class LineKind(StrEnum):
         """Открывает ли строка новую секцию документа."""
         return self in _SECTION_OPENING_KINDS
 
-    @property
-    def is_heading(self) -> bool:
-        """Заголовок ли это — такие строки в текст чанка не входят."""
-        return self in _HEADING_KINDS
-
 
 @dataclass(frozen=True, slots=True)
 class LayoutLine:
@@ -416,14 +411,5 @@ _SECTION_OPENING_KINDS = frozenset(
         LineKind.CLAUSE,
         LineKind.SUBCLAUSE_PAREN,
         LineKind.SUBCLAUSE_LETTER,
-    }
-)
-
-_HEADING_KINDS = frozenset(
-    {
-        LineKind.APPENDIX,
-        LineKind.HEADING_PART,
-        LineKind.HEADING_ARTICLE,
-        LineKind.HEADING_UPPER,
     }
 )

@@ -151,3 +151,12 @@ def test_subclause_nests_under_its_clause() -> None:
     )
 
     assert path == ("Статья 4", "4.1", "а")
+
+
+def test_sibling_subclauses_stay_siblings() -> None:
+    path = path_of(
+        "б) оплата",
+        "Статья 4. Обязанности\n4.1 Стороны обязаны\nа) поставка товара\nб) оплата",
+    )
+
+    assert path == ("Статья 4", "4.1", "б")

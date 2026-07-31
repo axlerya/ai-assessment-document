@@ -72,18 +72,19 @@ def _continues(group: _Group, line: LayoutLine, section: SectionNode) -> bool:
 def _flush(group: _Group | None, blocks: list[Block], content: str) -> None:
     if group is None:
         return
+    # Пробельная строка всегда BLANK и в группу не попадает, поэтому обрезанный
+    # спан группы непуст по построению.
     span = _trimmed(
         TextSpan(group.lines[0].span.start, group.lines[-1].span.end), content
     )
-    if not span.is_empty:
-        blocks.append(
-            Block(
-                span=span,
-                kind=group.kind,
-                section_key=group.section.key,
-                heading_path=group.section.heading_path,
-            )
+    blocks.append(
+        Block(
+            span=span,
+            kind=group.kind,
+            section_key=group.section.key,
+            heading_path=group.section.heading_path,
         )
+    )
 
 
 def _trimmed(span: TextSpan, content: str) -> TextSpan:
