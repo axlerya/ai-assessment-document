@@ -11,7 +11,6 @@ from typing import TYPE_CHECKING
 
 import pytest
 import pytest_asyncio
-from testcontainers.community.minio import MinioContainer
 
 from document_worker.infrastructure.storage.s3_object_storage import (
     S3Config,
@@ -22,15 +21,9 @@ if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Iterator
 
     from minio import Minio
+    from testcontainers.community.minio import MinioContainer
 
 SOURCE_BUCKET = "documents"
-
-
-@pytest.fixture(scope="session")
-def minio_container() -> Iterator[MinioContainer]:
-    """Поднимает MinIO один раз на весь прогон."""
-    with MinioContainer() as container:
-        yield container
 
 
 @pytest.fixture(scope="session")
