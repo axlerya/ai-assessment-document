@@ -11,6 +11,7 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Self
 
+from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 
 from document_worker.application.errors import PermanentError
@@ -73,9 +74,17 @@ class SqlAlchemyUnitOfWork:
     messages: ProcessedMessageRepository
     outbox: OutboxRepository
 
-    def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
+    def __init__(
+        self,
+        session_factory: async_sessionmaker[AsyncSession],
+        *,
+        statement_timeout_ms: int | None = None,
+        read_only: bool = False,
+    ) -> None:
         """Запоминает фабрику; сессия открывается при входе в блок."""
         self._session_factory = session_factory
+        self._statement_timeout_ms = statement_timeout_ms
+        self._read_only = read_only
         self._session: AsyncSession | None = None
         self._committed = False
 
@@ -92,6 +101,11 @@ class SqlAlchemyUnitOfWork:
         session = self._session_factory()
         # Транзакцией владеет сама сессия, объект перехода не нужен.
         _ = await session.begin()
+        await apply_transaction_settings(
+            session,
+            statement_timeout_ms=self._statement_timeout_ms,
+            read_only=self._read_only,
+        )
         self._session = session
         self._committed = False
         self.documents = SqlAlchemyDocumentRepository(session)
@@ -161,3 +175,24 @@ class SqlAlchemyUnitOfWork:
         if self._session is None:
             raise NestedUnitOfWorkError("единица работы используется вне своего блока")
         return self._session
+
+
+async def apply_transaction_settings(
+    session: AsyncSession,
+    *,
+    statement_timeout_ms: int | None,
+    read_only: bool,
+) -> None:
+    """Настраивает открытую транзакцию.
+
+    Настройки локальны для транзакции: уехав в соединение, они остались бы на
+    следующем, кто возьмёт его из пула, и чужая работа получила бы чужой
+    таймаут. Отчётная транзакция объявляется читающей — база отказывает сама,
+    а не полагается на дисциплину вызывающего.
+    """
+    if statement_timeout_ms is not None:
+        await session.execute(
+            text(f"SET LOCAL statement_timeout = {int(statement_timeout_ms)}")
+        )
+    if read_only:
+        await session.execute(text("SET TRANSACTION READ ONLY"))

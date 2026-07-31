@@ -26,6 +26,9 @@ hooks = [
   # conftest, фабрики, стратегии и фейки — общий инвентарь тестов, а не сами тесты.
   { id = "name-tests-test", args = ["--pytest-test-first"], files = "^document-worker/tests/.*\\.py$", exclude = "(^|/)(conftest|factories|strategies)\\.py$|^document-worker/tests/fakes/" },
   { id = "check-executables-have-shebangs" },
+  # Прямой коммит в main обходит ревью целиком: правило есть в AGENTS.md, но
+  # до сих пор его исполняла только дисциплина.
+  { id = "no-commit-to-branch", args = ["--branch", "main"] },
 ]
 
 [[repos]]
