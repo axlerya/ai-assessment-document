@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from document_worker.application.dto.commands import (
     CompleteDocumentProcessingCommand,
@@ -25,9 +25,13 @@ from document_worker.application.errors import (
 )
 from document_worker.domain.value_objects.enums import DocumentStatus, ProcessingStage
 
+# Лестница повторов исчерпана: держать документ в обработке дальше нечем.
+RETRIES_EXHAUSTED: Final[str] = "retries_exhausted"
+
 if TYPE_CHECKING:
     from document_worker.application.config import ProcessingConfig
     from document_worker.application.dto.commands import ProcessDocumentCommand
+    from document_worker.application.errors import ApplicationError
     from document_worker.application.ports.system import TempWorkspaceFactory
     from document_worker.application.services.message_claim import (
         ClaimResult,
@@ -89,7 +93,11 @@ class ProcessDocument:
                 "документ не уложился в отведённое время",
                 context={"document_id": str(command.document_id)},
             ) from error
-        except TransientError:
+        except TransientError as error:
+            if command.is_last_attempt:
+                # Повторов больше не будет, и незакрытый документ висел бы в
+                # обработке до вмешательства оператора.
+                return await self._fail(command, claim, error, code=RETRIES_EXHAUSTED)
             # Документ остаётся в обработке: в failed его не переводит ничто.
             await self.claim_service.release(command)
             raise
@@ -149,7 +157,9 @@ class ProcessDocument:
         self,
         command: ProcessDocumentCommand,
         claim: ClaimResult,
-        error: PermanentError,
+        error: ApplicationError,
+        *,
+        code: str | None = None,
     ) -> ProcessDocumentResult:
         await self.fail.execute(
             FailDocumentProcessingCommand(
@@ -157,7 +167,7 @@ class ProcessDocument:
                 correlation_id=command.correlation_id,
                 event_id=command.event_id,
                 job_id=_job_id(claim),
-                error_code=type(error).code,
+                error_code=code or type(error).code,
                 error_message=error.message,
                 stage=ProcessingStage.TEXT_EXTRACTION,
                 pages_persisted=len(claim.persisted_page_numbers),

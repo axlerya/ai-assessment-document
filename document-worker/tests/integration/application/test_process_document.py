@@ -492,23 +492,24 @@ async def test_transient_error_before_the_last_attempt_is_still_retried(
     assert stored.status is DocumentStatus.PROCESSING
 
 
-async def test_exhausted_budget_of_a_concurrent_lease_also_fails_the_document(
+async def test_live_lease_on_the_last_attempt_does_not_bury_the_document(
     session: AsyncSession,
     wiring: Wiring,
     uow_factory: UnitOfWorkFactory,
     tmp_path: Path,
 ) -> None:
-    # Иначе сообщение о занятом документе крутилось бы по первой ступени
-    # вечно: живой лиз зависшего воркера сам не пропадёт.
+    # Лиз держит другой воркер, и он, возможно, работает. Пометить документ
+    # отказом значит выбросить его результат: сообщение уходит в DLQ, а
+    # документ остаётся в обработке за живым владельцем.
     document = await _document_with_source(session, wiring, tmp_path)
     command = _command(document)
     await wiring.process.claim_service.claim(command)
 
-    result = await wiring.process.execute(_last_attempt(command))
+    with pytest.raises(ConcurrentProcessingError):
+        await wiring.process.execute(_last_attempt(command))
 
-    assert result.status is DocumentStatus.FAILED
     stored = await _stored(uow_factory, document)
-    assert stored.failure_code == RETRIES_EXHAUSTED
+    assert stored.status is DocumentStatus.PROCESSING
 
 
 def _last_attempt(command: ProcessDocumentCommand) -> ProcessDocumentCommand:
