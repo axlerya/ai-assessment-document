@@ -291,6 +291,20 @@ async def test_unreadable_document_raises_permanent_error(
         await _open_and_close(reader, path)
 
 
+async def test_document_repaired_without_root_is_permanent_error(
+    reader: PdfPlumberDocumentReader,
+    tmp_path: Path,
+) -> None:
+    # qpdf чинит таблицу ссылок и отдаёт файл без корневого объекта: pdfminer
+    # на нём падает своей ошибкой, и без перевода она уходит наверх как
+    # неизвестная — то есть повторяемая. Документ при этом висел бы в
+    # обработке, пока не кончится лестница повторов.
+    path = pdf_builder.make_corrupted_pdf(tmp_path / "doc.pdf")
+
+    with pytest.raises(CorruptedDocumentError):
+        await _open_and_close(reader, path)
+
+
 async def _open_and_close(reader: PdfPlumberDocumentReader, path: Path) -> None:
     async with reader.open(path):
         pass
