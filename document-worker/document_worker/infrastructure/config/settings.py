@@ -23,6 +23,7 @@ from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from document_worker.application.config import (
+    OcrConfig,
     OutboxConfig,
     ProcessingConfig,
     SourceConfig,
@@ -38,6 +39,7 @@ from document_worker.domain.value_objects.versioning import (
     ChunkingVersion,
     PipelineVersion,
 )
+from document_worker.infrastructure.ocr.model_registry import DEFAULT_MODEL_DIR
 
 SECRETS_DIR = Path("/run/secrets")
 DEFAULT_TEMP_SUBDIR = "document-worker"
@@ -105,6 +107,19 @@ class ProcessingSettings(Section):
     pipeline_version: str = "1.0.0"
 
 
+class OcrSettings(Section):
+    """Распознавание: модели, языки, пределы одной страницы."""
+
+    model_dir: Path = DEFAULT_MODEL_DIR
+    languages: tuple[str, ...] = ("ru", "en")
+    dpi_primary: Positive = 300
+    dpi_retry: Positive = 450
+    dpi_degraded: Positive = 200
+    page_timeout_s: PositiveSeconds = 60.0
+    max_page_attempts: Positive = 2
+    retry_below_confidence: float = Field(default=0.60, ge=0.0, le=1.0)
+
+
 class ChunkingSettings(Section):
     """Версия чанкования и бюджет токенов чанка."""
 
@@ -167,6 +182,7 @@ class AppSettings(BaseSettings):
     rabbit: RabbitSettings
     s3: S3Settings
     processing: ProcessingSettings = ProcessingSettings()
+    ocr: OcrSettings = OcrSettings()
     chunking: ChunkingSettings = ChunkingSettings()
     messaging: MessagingSettings = MessagingSettings()
     outbox: OutboxSettings = OutboxSettings()
@@ -202,6 +218,15 @@ class AppSettings(BaseSettings):
             document_timeout_s=self.processing.document_timeout_s,
             claim_lease_s=self.messaging.claim_lease_s,
             chunking=self.chunking.policy(),
+            ocr=OcrConfig(
+                languages=self.ocr.languages,
+                dpi_primary=self.ocr.dpi_primary,
+                dpi_retry=self.ocr.dpi_retry,
+                dpi_degraded=self.ocr.dpi_degraded,
+                page_timeout_s=self.ocr.page_timeout_s,
+                max_page_attempts=self.ocr.max_page_attempts,
+                retry_below_confidence=self.ocr.retry_below_confidence,
+            ),
             source=SourceConfig(
                 max_file_size_bytes=self.processing.max_file_size_bytes,
                 max_pages=self.processing.max_pages,

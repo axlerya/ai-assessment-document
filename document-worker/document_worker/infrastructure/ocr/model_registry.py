@@ -66,8 +66,12 @@ REQUIRED_MODELS: Final[tuple[ModelFile, ...]] = (
 )
 
 
-def default_model_dir() -> Path:
-    """Каталог моделей: из окружения, иначе локальный кэш."""
+def model_dir_from_env() -> Path:
+    """Каталог моделей для сборки образа и тестов.
+
+    Рантайм читает его через настройки: окружение разбирает ровно одно место,
+    иначе опечатка в имени переменной тихо превращается в значение по умолчанию.
+    """
     return Path(os.environ.get(MODEL_DIR_ENV) or DEFAULT_MODEL_DIR)
 
 

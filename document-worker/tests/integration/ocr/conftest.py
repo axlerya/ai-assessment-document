@@ -14,8 +14,8 @@ import pytest_asyncio
 
 from document_worker.infrastructure.cpu.executor import CpuPool
 from document_worker.infrastructure.ocr.model_registry import (
-    default_model_dir,
     download_missing,
+    model_dir_from_env,
     verify,
 )
 from document_worker.infrastructure.ocr.preprocessor import OpenCvImagePreprocessor
@@ -29,7 +29,7 @@ if TYPE_CHECKING:
 @pytest.fixture(scope="session")
 def model_dir() -> Path:
     """Каталог с моделями; недостающие докачиваются один раз на прогон."""
-    directory = default_model_dir()
+    directory = model_dir_from_env()
     download_missing(directory)
     verify(directory)
     return directory
