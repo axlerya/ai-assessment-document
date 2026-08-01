@@ -79,11 +79,49 @@ class CpuPool:
         Функция и аргументы обязаны быть picklable: путь к файлу и числа —
         да, открытый документ — нет.
         """
+        self._reject_keywords(kwargs)
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(self._require_executor(), function, *args)
+
+    async def run_within(
+        self,
+        timeout_s: float,
+        function: Callable[P, R],
+        /,
+        *args: P.args,
+        **kwargs: P.kwargs,
+    ) -> R:
+        """То же, но с ограничением по времени.
+
+        Raises:
+            TimeoutError: Задача не уложилась в отведённое время.
+        """
+        self._reject_keywords(kwargs)
+        loop = asyncio.get_running_loop()
+        future = loop.run_in_executor(self._require_executor(), function, *args)
+        try:
+            async with asyncio.timeout(timeout_s):
+                return await future
+        except TimeoutError:
+            # Одно ожидание таймаута не реализует: пул не умеет отменять уже
+            # начатую задачу, и зависший процесс остался бы занят навсегда.
+            # Поэтому он убивается, а пул поднимается заново.
+            await self._restart()
+            raise
+
+    @staticmethod
+    def _reject_keywords(kwargs: dict[str, object]) -> None:
         if kwargs:
             msg = "аргументы по имени в пул процессов не передаются"
             raise TypeError(msg)
-        loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(self._require_executor(), function, *args)
+
+    async def _restart(self) -> None:
+        executor = self._require_executor()
+        self._executor = None
+        for process in tuple(executor._processes.values()):  # noqa: SLF001 — публичного доступа к рабочим процессам у пула нет
+            process.kill()
+        await asyncio.to_thread(executor.shutdown, wait=False, cancel_futures=True)
+        await self.__aenter__()
 
     def _require_executor(self) -> ProcessPoolExecutor:
         if self._executor is None:

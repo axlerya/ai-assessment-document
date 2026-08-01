@@ -86,6 +86,26 @@ def test_image_size_stays_within_the_limit(image: str) -> None:
     assert size / BYTES_IN_MB < MAX_IMAGE_SIZE_MB
 
 
+def test_ocr_models_are_present_and_intact(image: str) -> None:
+    # Отсутствие или подмена модели — отказ при старте, а не тихая работа
+    # другой моделью.
+    output = _docker(
+        "run",
+        "--rm",
+        "--network",
+        "none",
+        image,
+        "python",
+        "-c",
+        "import os, pathlib;"
+        "from document_worker.infrastructure.ocr.model_registry import verify;"
+        "verify(pathlib.Path(os.environ['OCR__MODEL_DIR']));"
+        "print('ok')",
+    )
+
+    assert output == "ok"
+
+
 def test_token_counter_works_without_network(image: str) -> None:
     # Словарь BPE укладывается в образ на сборке: без прогрева первый же
     # документ упёрся бы в недоступный интернет посреди обработки.

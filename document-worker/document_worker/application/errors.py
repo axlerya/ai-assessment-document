@@ -178,6 +178,16 @@ class ProcessingDeadlineExceededError(TransientError):
     retry_after_s: ClassVar[float | None] = 60.0
 
 
+class OcrModelsUnavailableError(PermanentError):
+    """Модели распознавания отсутствуют или подменены.
+
+    Отказ при старте, а не ошибка сообщения: ошибка конфигурации, выданная за
+    временную, отправляет на бесконечный повтор всю очередь.
+    """
+
+    code: ClassVar[str] = "ocr_models_unavailable"
+
+
 class UnsupportedMediaTypeError(PermanentError):
     """Формат файла не поддерживается."""
 
@@ -295,6 +305,12 @@ class PageOutOfMemoryError(PageLevelError):
     """Не хватило памяти на обработку страницы."""
 
     code: ClassVar[str] = "page_out_of_memory"
+
+
+class OcrEngineError(PageLevelError):
+    """Движок распознавания не смог выполнить вывод на этой странице."""
+
+    code: ClassVar[str] = "ocr_engine_failed"
 
 
 _DOMAIN_TO_APPLICATION: dict[type[DomainError], type[PermanentError]] = {

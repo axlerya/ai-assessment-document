@@ -25,11 +25,14 @@ COPY alembic.ini ./
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev --no-editable
 
-# Словарь BPE укладывается в образ здесь: сеть в рантайме запрещена, а первый
-# вызов токенизатора иначе полез бы её скачивать посреди обработки документа.
-ENV TIKTOKEN_CACHE_DIR=/opt/tiktoken-cache
+# Словарь BPE и модели распознавания укладываются в образ здесь: сеть в
+# рантайме запрещена, а первый же документ иначе полез бы её скачивать в
+# середине обработки.
+ENV TIKTOKEN_CACHE_DIR=/opt/tiktoken-cache \
+    OCR__MODEL_DIR=/opt/ocr-models
 RUN uv run --no-dev --no-sync python scripts/prefetch_models.py \
-    && test -n "$(ls -A /opt/tiktoken-cache)"
+    && test -n "$(ls -A /opt/tiktoken-cache)" \
+    && test -n "$(ls -A /opt/ocr-models)"
 
 
 FROM python:3.12-slim-bookworm AS runtime
@@ -52,6 +55,7 @@ ENV PATH="/app/.venv/bin:$PATH" \
     # держим пул процессов: вложенный параллелизм только конкурирует за ядра.
     OMP_NUM_THREADS=1 \
     TIKTOKEN_CACHE_DIR=/opt/tiktoken-cache \
+    OCR__MODEL_DIR=/opt/ocr-models \
     PROCESSING__TEMP_DIR=/tmp/document-worker
 
 WORKDIR /app
@@ -61,6 +65,7 @@ COPY --from=builder --chown=10001:10001 /app/document_worker /app/document_worke
 COPY --from=builder --chown=10001:10001 /app/migrations /app/migrations
 COPY --from=builder --chown=10001:10001 /app/alembic.ini /app/alembic.ini
 COPY --from=builder --chown=10001:10001 /opt/tiktoken-cache /opt/tiktoken-cache
+COPY --from=builder --chown=10001:10001 /opt/ocr-models /opt/ocr-models
 
 USER 10001:10001
 
