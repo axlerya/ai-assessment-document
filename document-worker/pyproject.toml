@@ -24,6 +24,9 @@ dependencies = [
     "pikepdf>=10.10.0,<11",
     "pillow>=12.3.0,<13",
     "tiktoken>=0.13.0,<0.14",
+    "rapidocr>=3.4.2,<4",
+    "opencv-contrib-python-headless>=4.12,<5",
+    "onnxruntime>=1.24,<2",
 ]
 
 [project.scripts]
@@ -38,6 +41,9 @@ packages = ["document_worker"]
 
 [tool.uv]
 required-version = ">=0.9.26"
+# rapidocr тянет полный opencv-python с GUI-биндингами: он требует libGL,
+# которого в slim-образе нет, и весит вдвое больше headless-сборки.
+override-dependencies = ["opencv-python; python_version < '3'"]
 package = true
 default-groups = ["dev"]
 
