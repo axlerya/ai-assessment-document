@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import hashlib
+import io
 from typing import TYPE_CHECKING
 
 import pytest
@@ -92,3 +93,46 @@ def test_missing_models_lists_what_the_build_must_download(tmp_path: Path) -> No
     assert [model.name for model in missing_models(tmp_path)] == [
         model.name for model in REQUIRED_MODELS
     ]
+
+
+def _serve(payload: bytes, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Подменяет сеть: BytesIO ведёт себя как ответ — контекст и read."""
+    monkeypatch.setattr(
+        "urllib.request.urlopen",
+        lambda *_args, **_kwargs: io.BytesIO(payload),
+    )
+
+
+def test_download_missing_fetches_and_verifies(
+    model_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (model_dir / FILE_NAME).unlink()
+    _serve(PAYLOAD, monkeypatch)
+
+    assert model_registry.download_missing(model_dir) == ("rec",)
+    verify(model_dir)
+
+
+def test_download_skips_models_already_in_place(
+    model_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _serve(b"never used", monkeypatch)
+
+    assert model_registry.download_missing(model_dir) == ()
+
+
+def test_download_of_a_replaced_model_is_refused(
+    model_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Подменённая на зеркале модель не должна попасть в образ: она распознаёт
+    # что-то другое и делает это молча.
+    (model_dir / FILE_NAME).unlink()
+    _serve(b"tampered", monkeypatch)
+
+    with pytest.raises(OcrModelsUnavailableError, match="скачанная"):
+        model_registry.download_missing(model_dir)
+
+    assert not list(model_dir.iterdir())

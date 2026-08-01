@@ -18,11 +18,13 @@ from document_worker.application.dto.ocr import (
     PageTransform,
     PreprocessProfile,
 )
+from document_worker.application.errors import CorruptedPageImageError
 from document_worker.infrastructure.ocr.preprocessor import (
     DESKEW_DISAGREEMENT_LIMIT_DEG,
     STEP_DESKEW_UNCERTAIN,
     STEP_DESKEWED,
     STEP_INVERTED,
+    _normalized,
     prepare_page,
 )
 from tests.fakes.page_images import blank_page_png, make_page_image, make_page_png
@@ -177,3 +179,33 @@ def test_identity_transform_maps_corners_to_unit_square() -> None:
     transform = PageTransform.identity(width_px=200, height_px=100)
 
     assert transform.to_page(200.0, 100.0) == (1.0, 1.0)
+
+
+def test_rgb_page_without_alpha_is_converted_to_grayscale() -> None:
+    source = make_page_image().convert("RGB")
+    buffer = io.BytesIO()
+    source.save(buffer, format="PNG")
+
+    result = prepared(buffer.getvalue())
+
+    assert result.image.width_px == source.width
+
+
+def test_unreadable_bytes_are_reported_as_a_page_level_error() -> None:
+    broken = PageImage(
+        number=7, png=b"not an image", width_px=10, height_px=10, dpi=150
+    )
+
+    with pytest.raises(CorruptedPageImageError):
+        prepare_page(broken, PreprocessProfile.DEFAULT)
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [(46.0, -44.0), (-46.0, 44.0), (10.0, 10.0)],
+)
+def test_minimum_rectangle_angle_is_normalized(raw: float, expected: float) -> None:
+    # cv2.minAreaRect отдаёт угол в своём диапазоне, и без приведения строка,
+    # повёрнутая на 91 градус, читалась бы как наклон в один.
+
+    assert _normalized(raw) == pytest.approx(expected)
