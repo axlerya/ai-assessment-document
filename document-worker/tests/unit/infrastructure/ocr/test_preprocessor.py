@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import io
+from typing import TYPE_CHECKING
 
 import pytest
 from PIL import Image
@@ -26,6 +27,9 @@ from document_worker.infrastructure.ocr.preprocessor import (
 )
 from tests.fakes.page_images import blank_page_png, make_page_image, make_page_png
 
+if TYPE_CHECKING:
+    from document_worker.application.dto.ocr import PreparedPage
+
 pytestmark = pytest.mark.unit
 
 SKEW_DEG = 2.7
@@ -36,19 +40,26 @@ ROUNDTRIP_TOLERANCE = 0.004
 def page_image(png: bytes) -> PageImage:
     """Оборачивает байты в то, что ходит между процессами."""
     with Image.open(io.BytesIO(png)) as image:
-        return PageImage(png=png, width_px=image.width, height_px=image.height, dpi=150)
+        return PageImage(
+            number=1,
+            png=png,
+            width_px=image.width,
+            height_px=image.height,
+            dpi=150,
+        )
 
 
 def prepared(
     png: bytes, profile: PreprocessProfile = PreprocessProfile.DEFAULT
-) -> object:
+) -> PreparedPage:
     """Прогоняет предобработку в текущем процессе."""
     return prepare_page(page_image(png), profile)
 
 
 def mean_level(png: bytes) -> float:
+    """Средняя яркость: по ней видно, перевернули страницу или нет."""
     with Image.open(io.BytesIO(png)) as image:
-        pixels = list(image.convert("L").getdata())
+        pixels = image.convert("L").tobytes()
     return sum(pixels) / len(pixels)
 
 
@@ -71,7 +82,15 @@ def test_deskew_estimates_known_angle_within_tolerance() -> None:
     result = prepared(make_page_png(angle=SKEW_DEG))
 
     assert STEP_DESKEWED in result.applied
-    assert abs(result.skew_angle_deg - SKEW_DEG) <= SKEW_TOLERANCE_DEG
+    assert abs(abs(result.skew_angle_deg) - SKEW_DEG) <= SKEW_TOLERANCE_DEG
+
+
+def test_deskewed_page_has_no_residual_skew() -> None:
+    # Оценка угла бесполезна, если поворот его не снимает: повторный прогон
+    # по выпрямленной странице обязан не найти наклона.
+    straightened = prepared(make_page_png(angle=SKEW_DEG))
+
+    assert STEP_DESKEWED not in prepared(straightened.image.png).applied
 
 
 def test_deskew_is_skipped_on_straight_page() -> None:

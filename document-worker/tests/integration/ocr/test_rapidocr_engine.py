@@ -17,11 +17,13 @@ from document_worker.application.dto.ocr import (
 )
 from document_worker.application.errors import PageOcrTimeoutError
 from document_worker.infrastructure.ocr.rapidocr_engine import ENGINE_PARAMS
-from tests.fakes.page_images import blank_page_png, make_page_png
+from tests.fakes.page_images import DEFAULT_LINES, blank_page_png, make_page_png
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
     from pathlib import Path
 
+    from document_worker.application.dto.ocr import OcrResult, RecognizedWordDTO
     from document_worker.infrastructure.ocr.preprocessor import OpenCvImagePreprocessor
     from document_worker.infrastructure.ocr.rapidocr_engine import RapidOcrEngine
 
@@ -36,7 +38,13 @@ MAX_MISSED_TICKS = 2
 
 def page_image(png: bytes) -> PageImage:
     with Image.open(io.BytesIO(png)) as image:
-        return PageImage(png=png, width_px=image.width, height_px=image.height, dpi=150)
+        return PageImage(
+            number=1,
+            png=png,
+            width_px=image.width,
+            height_px=image.height,
+            dpi=150,
+        )
 
 
 async def recognize(
@@ -45,7 +53,7 @@ async def recognize(
     png: bytes,
     *,
     timeout_s: float = TIMEOUT_S,
-) -> object:
+) -> OcrResult:
     prepared = await preprocessor.prepare(
         page_image(png), profile=PreprocessProfile.DEFAULT
     )
@@ -56,11 +64,19 @@ async def test_recognizes_clean_scan_with_expected_confidence(
     engine: RapidOcrEngine,
     preprocessor: OpenCvImagePreprocessor,
 ) -> None:
+    # Уверенность проверяется взвешенной по длине слова — той величиной, в
+    # которой её считает сервис. Отдельное короткое слово получает от движка
+    # заведомо шумный score даже когда прочитано верно.
     result = await recognize(engine, preprocessor, make_page_png())
 
     recognized = " ".join(word.text for word in result.words)
-    assert "CONTRACT" in recognized
-    assert min(word.confidence for word in result.words) > MIN_CLEAN_SCAN_CONFIDENCE
+    assert recognized == " ".join(DEFAULT_LINES).replace("  ", " ")
+    assert _weighted_confidence(result.words) > MIN_CLEAN_SCAN_CONFIDENCE
+
+
+def _weighted_confidence(words: Sequence[RecognizedWordDTO]) -> float:
+    weight = sum(len(word.text) for word in words)
+    return sum(word.confidence * len(word.text) for word in words) / weight
 
 
 async def test_returns_per_word_confidence_and_boxes(
