@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING, Any, Final
 
 import pdfplumber
 import pikepdf
+from pdfplumber.utils.exceptions import PdfminerException
 
 from document_worker.application.dto.pdf import (
     PdfPageTextDTO,
@@ -265,6 +266,15 @@ class PdfPlumberDocumentReader:
         """
         try:
             document = await self.pool.run(read_document, str(path))
-        except (pikepdf.PasswordError, pikepdf.PdfError, OSError) as error:
+        except (
+            pikepdf.PasswordError,
+            pikepdf.PdfError,
+            PdfminerException,
+            OSError,
+        ) as error:
+            # Без последней ветки ошибка pdfminer уходит наверх неизвестной,
+            # то есть повторяемой: документ висел бы в обработке, пока не
+            # кончится лестница повторов, и не дошёл бы ни до отказа, ни до
+            # очереди разбора.
             raise translate_pdf_error(error, path=str(path)) from error
         yield PdfPlumberHandle(document=document)

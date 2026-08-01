@@ -64,6 +64,29 @@ async def test_duplicate_delivery_does_not_republish_the_event(
     assert events[0].n == 1
 
 
+async def test_unreadable_pdf_goes_to_dlq_without_retry(
+    harness: Harness,
+    document: Document,
+    tmp_path: Path,
+) -> None:
+    # Файл, который qpdf чинит, а pdfminer читать отказывается: без перевода
+    # ошибки он уходил на повторы и оставлял документ висеть в обработке.
+    await _process(
+        harness,
+        document,
+        pdf_builder.make_corrupted_pdf(tmp_path / "broken.pdf").read_bytes(),
+    )
+
+    await harness.wait_for_dlq(document)
+
+    rows = await harness.rows(
+        "SELECT status, failure_code FROM documents WHERE id = :id",
+        id=document.id.value,
+    )
+    assert rows[0].status == DocumentStatus.FAILED.value
+    assert rows[0].failure_code == "corrupted_document"
+
+
 async def test_file_that_is_not_a_pdf_goes_to_dlq_without_retry(
     harness: Harness,
     document: Document,
