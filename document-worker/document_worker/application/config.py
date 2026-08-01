@@ -68,8 +68,11 @@ class OcrConfig:
     dpi_primary: int = 300
     dpi_retry: int = 400
     dpi_degraded: int = 200
-    page_timeout_s: float = 90.0
+    page_timeout_s: float = 60.0
     max_page_attempts: int = 2
+    # Выше этой высоты строки рост разрешения распознаванию уже ничего не даёт:
+    # распознаватель масштабирует каждый кроп строки к своей высоте.
+    target_line_height_px: int = 32
     # Операционное решение «повторить ли на большем DPI»: на статус страницы
     # не влияет, поэтому живёт здесь, а не в политике.
     retry_below_confidence: float = 0.60

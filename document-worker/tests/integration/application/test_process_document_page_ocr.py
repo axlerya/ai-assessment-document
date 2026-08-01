@@ -67,8 +67,22 @@ if TYPE_CHECKING:
 pytestmark = pytest.mark.integration
 
 MAX_PAGES = 8
-MAX_PIXELS = 8_000_000
+# Столько же, сколько по умолчанию в бою: иначе рендер снижает разрешение
+# и лестница DPI перестаёт быть проверяемой.
+MAX_PIXELS = 40_000_000
 BOX = BoundingBox(0.1, 0.1, 0.4, 0.2)
+# Политика читаемости считает страницу короче сорока символов «пустой»
+# и обнуляет уверенность, поэтому сценарии оперируют целой фразой.
+PHRASE = (
+    "Исполнитель",
+    "обязуется",
+    "поставить",
+    "товар",
+    "в",
+    "срок",
+    "договора",
+)
+SENTENCE = " ".join(PHRASE)
 
 
 @dataclass
@@ -112,6 +126,19 @@ def recognized(*words: tuple[str, float], line_height: float = 40.0) -> OcrResul
         engine_version="scripted",
         elapsed_ms=1,
     )
+
+
+def phrase(
+    confidence: float,
+    *,
+    line_height: float = 40.0,
+    extra: tuple[str, float] | None = None,
+) -> OcrResult:
+    """Целая фраза с заданной уверенностью и, при нужде, плохим словом."""
+    words = [(text, confidence) for text in PHRASE]
+    if extra is not None:
+        words.append(extra)
+    return recognized(*words, line_height=line_height)
 
 
 @dataclass(frozen=True)
@@ -197,7 +224,9 @@ async def stored_document(session: AsyncSession) -> tuple[Document, Any]:
     """Документ и открытый прогон в базе."""
     document = make_document()
     session.add(document_to_row(document))
-    job = make_job(document)
+    # Прогон без объявленного числа страниц: счётчики начинаются с нуля,
+    # и эта страница станет первой.
+    job = make_job(document, pages_total=None)
     session.add(job_to_row(job))
     await session.commit()
     return document, job.id
@@ -249,9 +278,7 @@ async def test_low_confidence_word_becomes_illegible_span_with_raw_text(
     # Устав запрещает подменять неразборчивое предположением: сохраняется ровно
     # то, что выдал движок.
     document, job_id = await stored_document(session)
-    engine = ScriptedEngine(
-        [recognized(("Договор", 0.95), ("поставки", 0.95), ("тваров", 0.20))]
-    )
+    engine = ScriptedEngine([phrase(0.95, extra=("тваров", 0.20))])
     use_case = wiring.with_engine(engine)
     source = pdf_builder.make_ocr_scan_pdf(tmp_path / "scan.pdf")
 
@@ -280,8 +307,8 @@ async def test_retries_at_higher_dpi_and_keeps_the_best_result(
     document, job_id = await stored_document(session)
     engine = ScriptedEngine(
         [
-            recognized(("мутно", 0.30), line_height=12.0),
-            recognized(("Договор", 0.95), ("поставки", 0.95), line_height=12.0),
+            phrase(0.30, line_height=12.0),
+            phrase(0.95, line_height=12.0),
         ]
     )
     use_case = wiring.with_engine(engine)
@@ -298,7 +325,7 @@ async def test_retries_at_higher_dpi_and_keeps_the_best_result(
         pages = await uow.pages.load_pages(
             document.id, PIPELINE_VERSION, statuses=frozenset({result.status})
         )
-    assert pages[0].text.content == "Договор поставки"
+    assert pages[0].text.content == SENTENCE
 
 
 async def test_high_line_does_not_trigger_dpi_escalation(
@@ -308,7 +335,7 @@ async def test_high_line_does_not_trigger_dpi_escalation(
 ) -> None:
     # Дело не в разрешении: шум, рукопись или печать выше не станут читаемее.
     document, job_id = await stored_document(session)
-    engine = ScriptedEngine([recognized(("мутно", 0.30), line_height=90.0)])
+    engine = ScriptedEngine([phrase(0.30, line_height=90.0)])
     use_case = wiring.with_engine(engine)
     source = pdf_builder.make_ocr_scan_pdf(tmp_path / "scan.pdf")
 
@@ -327,7 +354,7 @@ async def test_timeout_falls_back_to_degraded_attempt(
     engine = ScriptedEngine(
         [
             PageOcrTimeoutError("не уложилась", page_number=1),
-            recognized(("Договор", 0.95), ("поставки", 0.95)),
+            phrase(0.95),
         ]
     )
     use_case = wiring.with_engine(engine)
@@ -365,3 +392,32 @@ async def test_page_is_failed_after_timeouts_without_failing_the_document(
 
     assert result.status is PageStatus.FAILED
     assert result.method is ExtractionMethod.NONE
+
+
+async def test_worse_second_attempt_does_not_replace_the_first(
+    session: AsyncSession,
+    wiring: Wiring,
+    tmp_path: Path,
+) -> None:
+    # Между попытками сохраняется лучшая: иначе повышение разрешения могло бы
+    # ухудшить страницу, которая до него читалась.
+    document, job_id = await stored_document(session)
+    engine = ScriptedEngine(
+        [phrase(0.55, line_height=12.0), phrase(0.40, line_height=12.0)]
+    )
+    use_case = wiring.with_engine(engine)
+    source = pdf_builder.make_ocr_scan_pdf(tmp_path / "scan.pdf")
+
+    async with opened(source, wiring.pool, document) as extraction:
+        result = await run_page(use_case, extraction, document, job_id)
+
+    assert engine.seen_dpi == [
+        wiring.config.ocr.dpi_primary,
+        wiring.config.ocr.dpi_retry,
+    ]
+    async with wiring.uow_factory(statement_timeout_ms=2000, read_only=True) as uow:
+        pages = await uow.pages.load_pages(
+            document.id, PIPELINE_VERSION, statuses=frozenset({result.status})
+        )
+    assert pages[0].confidence is not None
+    assert pages[0].confidence.value == pytest.approx(0.55, abs=0.01)

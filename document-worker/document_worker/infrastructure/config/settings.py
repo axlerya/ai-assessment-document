@@ -117,6 +117,7 @@ class OcrSettings(Section):
     dpi_degraded: Positive = 200
     page_timeout_s: PositiveSeconds = 60.0
     max_page_attempts: Positive = 2
+    target_line_height_px: Positive = 32
     retry_below_confidence: float = Field(default=0.60, ge=0.0, le=1.0)
 
 
@@ -225,6 +226,7 @@ class AppSettings(BaseSettings):
                 dpi_degraded=self.ocr.dpi_degraded,
                 page_timeout_s=self.ocr.page_timeout_s,
                 max_page_attempts=self.ocr.max_page_attempts,
+                target_line_height_px=self.ocr.target_line_height_px,
                 retry_below_confidence=self.ocr.retry_below_confidence,
             ),
             source=SourceConfig(

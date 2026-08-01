@@ -124,13 +124,15 @@ def test_zero_length_span_survives_reprojection() -> None:
 def test_span_destroyed_by_normalization_is_an_error() -> None:
     # Молча сохранённый съехавший диапазон всплыл бы только при цитировании
     # оператору — то есть тогда, когда исправлять поздно.
+    # Фрагмент целиком состоял из мягких переносов, которые нормализация
+    # удаляет: переносить нечего.
     raw = "Договор ­­ поставки"
     normalized = NORMALIZER.normalize(raw, source=ExtractionMethod.OCR)
     span = IllegibleSpan(
-        span=TextSpan(8, 11),
+        span=TextSpan(8, 10),
         confidence=OcrConfidence(0.3),
         reason=IllegibleReason.LOW_OCR_CONFIDENCE,
-        raw_text=raw[8:11],
+        raw_text=raw[8:10],
     )
 
     with pytest.raises(IllegibleSpanLostError):

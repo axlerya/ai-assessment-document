@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from document_worker.application.errors import InvalidCommandError
 from document_worker.domain.value_objects.enums import ExtractionMethod
 
 if TYPE_CHECKING:
@@ -67,3 +68,15 @@ class DocumentExtraction:
     plan: DocumentExtractionPlanDTO
     pdf: PdfHandle
     renderer: RenderSession | None
+
+    @property
+    def render_session(self) -> RenderSession:
+        """Сессия рендера для страницы, которую нужно распознать.
+
+        Raises:
+            InvalidCommandError: План открывает сессию, как только в нём есть
+                хоть одна страница распознавания; её отсутствие — ошибка плана.
+        """
+        if self.renderer is None:
+            raise InvalidCommandError("страница требует рендера, а сессия не открыта")
+        return self.renderer

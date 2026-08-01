@@ -42,6 +42,7 @@ from document_worker.application.use_cases.publish_outbox_events import (
 )
 from document_worker.domain.normalization.normalizer import TextNormalizer
 from document_worker.domain.policies.document_status import DocumentStatusPolicy
+from document_worker.domain.policies.page_legibility import PageLegibilityPolicy
 from document_worker.domain.policies.text_layer_quality import TextLayerQualityPolicy
 from document_worker.infrastructure.chunking.runner import CpuPoolChunkingRunner
 from document_worker.infrastructure.cpu.executor import CpuPool
@@ -55,6 +56,9 @@ from document_worker.infrastructure.messaging.topology import (
     RETRY_LADDER,
     build_topology,
 )
+from document_worker.infrastructure.ocr.model_registry import verify as verify_models
+from document_worker.infrastructure.ocr.preprocessor import OpenCvImagePreprocessor
+from document_worker.infrastructure.ocr.rapidocr_engine import RapidOcrEngine
 from document_worker.infrastructure.pdf.pdfplumber_text_reader import (
     PdfPlumberDocumentReader,
 )
@@ -105,6 +109,9 @@ class Services:
 async def build_services(settings: AppSettings) -> AsyncIterator[Services]:
     """Собирает сервис и освобождает его ресурсы при любом исходе."""
     config = settings.processing_config()
+    # Модели проверяются до того, как сервис начнёт принимать сообщения:
+    # отсутствие модели — ошибка конфигурации, а не первого документа.
+    verify_models(settings.ocr.model_dir)
     clock = SystemClock()
     ids = Uuid4IdGenerator()
 
@@ -152,6 +159,9 @@ async def build_services(settings: AppSettings) -> AsyncIterator[Services]:
                 process_page=ProcessDocumentPage(
                     uow_factory=uow_factory,
                     normalizer=TextNormalizer(),
+                    preprocessor=OpenCvImagePreprocessor(pool=pool),
+                    engine=RapidOcrEngine(pool=pool, model_dir=settings.ocr.model_dir),
+                    legibility=PageLegibilityPolicy(),
                     ids=ids,
                     clock=clock,
                     config=config,
