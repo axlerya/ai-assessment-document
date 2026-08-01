@@ -18,6 +18,8 @@ from typing import TYPE_CHECKING, Final
 import pikepdf
 from PIL import Image, ImageDraw, TiffImagePlugin
 
+from tests.fakes.page_images import make_page_image
+
 if TYPE_CHECKING:
     from collections.abc import Sequence
     from pathlib import Path
@@ -324,4 +326,30 @@ def _ccitt_g4_bytes(image: Image.Image) -> tuple[bytes, int, int]:
 def make_non_pdf_file(path: Path) -> Path:
     """Файл с расширением PDF, но не PDF внутри."""
     path.write_bytes(zlib.compress("это не PDF".encode() * 100))
+    return path
+
+
+def make_ocr_scan_pdf(path: Path, *, pages: int = 1) -> Path:
+    """Скан с текстом, который читается распознавателем.
+
+    Отличается от `make_scan_pdf` кеглем: мелкий шрифт по умолчанию детектор
+    не находит, и проверять на нём распознавание бессмысленно.
+    """
+    image = make_page_image()
+    buffer = io.BytesIO()
+    image.convert("RGB").save(buffer, format="JPEG", quality=90)
+    with pikepdf.new() as pdf:
+        for _ in range(pages):
+            xobject = pdf.make_stream(buffer.getvalue())
+            xobject.Type = pikepdf.Name.XObject
+            xobject.Subtype = pikepdf.Name.Image
+            xobject.Width = image.width
+            xobject.Height = image.height
+            xobject.ColorSpace = pikepdf.Name.DeviceRGB
+            xobject.BitsPerComponent = 8
+            xobject.Filter = pikepdf.Name.DCTDecode
+            _append_page(
+                pdf, _draw_full_page_image(), xobject=pdf.make_indirect(xobject)
+            )
+        pdf.save(path, deterministic_id=True)
     return path

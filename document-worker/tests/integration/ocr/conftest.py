@@ -13,26 +13,12 @@ import pytest
 import pytest_asyncio
 
 from document_worker.infrastructure.cpu.executor import CpuPool
-from document_worker.infrastructure.ocr.model_registry import (
-    download_missing,
-    model_dir_from_env,
-    verify,
-)
 from document_worker.infrastructure.ocr.preprocessor import OpenCvImagePreprocessor
 from document_worker.infrastructure.ocr.rapidocr_engine import RapidOcrEngine
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
     from pathlib import Path
-
-
-@pytest.fixture(scope="session")
-def model_dir() -> Path:
-    """Каталог с моделями; недостающие докачиваются один раз на прогон."""
-    directory = model_dir_from_env()
-    download_missing(directory)
-    verify(directory)
-    return directory
 
 
 @pytest_asyncio.fixture(scope="session", loop_scope="session")
