@@ -34,6 +34,11 @@ from testcontainers.core.container import DockerContainer
 from testcontainers.core.wait_strategies import LogMessageWaitStrategy
 
 from document_worker.infrastructure.cpu.executor import CpuPool
+from document_worker.infrastructure.ocr.model_registry import (
+    download_missing,
+    model_dir_from_env,
+    verify,
+)
 from document_worker.infrastructure.persistence.unit_of_work import SqlAlchemyUnitOfWork
 
 if TYPE_CHECKING:
@@ -356,3 +361,12 @@ def uow_factory(
         return SqlAlchemyUnitOfWork(session_factory)
 
     return factory
+
+
+@pytest.fixture(scope="session")
+def model_dir() -> Path:
+    """Каталог с моделями распознавания; недостающие докачиваются один раз."""
+    directory = model_dir_from_env()
+    download_missing(directory)
+    verify(directory)
+    return directory

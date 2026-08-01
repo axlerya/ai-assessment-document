@@ -42,10 +42,17 @@ from document_worker.application.use_cases.process_document_page import (
 )
 from document_worker.domain.normalization.normalizer import TextNormalizer
 from document_worker.domain.policies.document_status import DocumentStatusPolicy
+from document_worker.domain.policies.page_legibility import PageLegibilityPolicy
 from document_worker.domain.policies.text_layer_quality import TextLayerQualityPolicy
-from document_worker.domain.value_objects.enums import DocumentStatus, PageStatus
+from document_worker.domain.value_objects.enums import (
+    DocumentStatus,
+    ExtractionMethod,
+    PageStatus,
+)
 from document_worker.domain.value_objects.identifiers import EventId
 from document_worker.infrastructure.chunking.runner import CpuPoolChunkingRunner
+from document_worker.infrastructure.ocr.preprocessor import OpenCvImagePreprocessor
+from document_worker.infrastructure.ocr.rapidocr_engine import RapidOcrEngine
 from document_worker.infrastructure.pdf.pdfplumber_text_reader import (
     PdfPlumberDocumentReader,
 )
@@ -105,6 +112,7 @@ def wiring(  # noqa: PLR0913, PLR0917 — оркестратор собирае�
     clock: FixedClock,
     ids: SequentialIdGenerator,
     config: ProcessingConfig,
+    model_dir: Path,
     tmp_path: Path,
 ) -> Wiring:
     """Оркестратор на настоящих репозиториях, PDF-адаптерах и фейке хранилища."""
@@ -133,6 +141,9 @@ def wiring(  # noqa: PLR0913, PLR0917 — оркестратор собирае�
             process_page=ProcessDocumentPage(
                 uow_factory=watched_factory,
                 normalizer=TextNormalizer(),
+                preprocessor=OpenCvImagePreprocessor(pool=cpu_pool),
+                engine=RapidOcrEngine(pool=cpu_pool, model_dir=model_dir),
+                legibility=PageLegibilityPolicy(),
                 ids=ids,
                 clock=clock,
                 config=config,
@@ -423,29 +434,35 @@ async def test_temp_workspace_is_removed_after_a_failure(
     assert [entry.name for entry in tmp_path.iterdir() if entry.is_dir()] == []
 
 
-async def test_scanned_document_ends_failed_until_recognition_arrives(
+async def test_scanned_document_goes_through_recognition(
     session: AsyncSession,
     wiring: Wiring,
     uow_factory: UnitOfWorkFactory,
     tmp_path: Path,
 ) -> None:
-    # Заглушка распознавания: страницы сохраняются отказом, документ не
-    # притворяется обработанным.
+    # Скан читается распознаванием и доходит до чанков: отказ здесь означал бы,
+    # что сканы для сервиса по-прежнему не существуют.
     document = await _document_with_source(
         session,
         wiring,
         tmp_path,
-        payload=pdf_builder.make_scan_pdf(tmp_path / "scan.pdf").read_bytes(),
+        payload=pdf_builder.make_ocr_scan_pdf(
+            tmp_path / "scan.pdf", pages=PAGES
+        ).read_bytes(),
     )
 
     result = await wiring.process.execute(_command(document))
 
-    assert result.status is DocumentStatus.FAILED
+    assert result.status is not DocumentStatus.FAILED
+    assert result.chunks_total > 0
     async with uow_factory(statement_timeout_ms=1000, read_only=True) as uow:
         pages = await uow.pages.load_pages(
-            document.id, PIPELINE_VERSION, statuses=frozenset({PageStatus.FAILED})
+            document.id,
+            PIPELINE_VERSION,
+            statuses=frozenset({PageStatus.EXTRACTED, PageStatus.PARTIALLY_ILLEGIBLE}),
         )
-    assert len(pages) == 1
+    assert {page.method for page in pages} == {ExtractionMethod.OCR}
+    assert pages[0].render_dpi is not None
 
 
 async def test_processing_beyond_the_deadline_is_a_transient_error(

@@ -178,6 +178,16 @@ class ProcessingDeadlineExceededError(TransientError):
     retry_after_s: ClassVar[float | None] = 60.0
 
 
+class IllegibleSpanLostError(PermanentError):
+    """Диапазон неразборчивости уничтожен нормализацией.
+
+    Это баг, а не данные: молча сохранённый съехавший диапазон всплывёт только
+    при цитировании оператору.
+    """
+
+    code: ClassVar[str] = "illegible_span_lost"
+
+
 class OcrModelsUnavailableError(PermanentError):
     """Модели распознавания отсутствуют или подменены.
 

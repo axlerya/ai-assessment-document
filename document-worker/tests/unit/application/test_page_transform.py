@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 
 from document_worker.application.dto.ocr import PageTransform
+from document_worker.application.errors import InvalidCommandError
 from document_worker.domain.errors import InvariantViolation
 
 pytestmark = pytest.mark.unit
@@ -38,3 +39,16 @@ def test_composed_transform_maps_a_point_through_both_steps() -> None:
 
     assert shifted.to_image(0.0, 0.0) == (10.0, -5.0)
     assert shifted.to_page(10.0, -5.0) == (0.0, 0.0)
+
+
+def test_render_session_is_required_for_a_page_that_needs_it() -> None:
+    # План открывает сессию рендера, как только в нём есть хоть одна страница
+    # распознавания: её отсутствие означает ошибку плана, а не документа.
+    from document_worker.application.dto.extraction import (  # noqa: PLC0415
+        DocumentExtraction,
+    )
+
+    extraction = DocumentExtraction(plan=None, pdf=None, renderer=None)  # type: ignore[arg-type]
+
+    with pytest.raises(InvalidCommandError):
+        _ = extraction.render_session

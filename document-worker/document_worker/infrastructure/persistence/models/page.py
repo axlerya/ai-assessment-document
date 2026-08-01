@@ -101,10 +101,12 @@ class DocumentPageRow(Base):
             "num_nonnulls(image_bucket, image_key) IN (0, 2)",
             name="image_ref_complete",
         ),
+        # Ссылки на рендер не требуем: он воспроизводится из исходного PDF
+        # детерминированно, а разрешение — единственное, чего для этого
+        # не хватает.
         CheckConstraint(
-            "extraction_method NOT IN ('ocr','hybrid')"
-            " OR (image_key IS NOT NULL AND render_dpi IS NOT NULL)",
-            name="ocr_has_image_ref",
+            "extraction_method NOT IN ('ocr','hybrid') OR render_dpi IS NOT NULL",
+            name="ocr_has_render_dpi",
         ),
         CheckConstraint(
             "render_dpi IS NULL OR render_dpi BETWEEN 72 AND 600",

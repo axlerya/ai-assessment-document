@@ -28,6 +28,7 @@ from document_worker.application.use_cases.process_document_page import (
     ProcessDocumentPage,
 )
 from document_worker.domain.normalization.normalizer import TextNormalizer
+from document_worker.domain.policies.page_legibility import PageLegibilityPolicy
 from document_worker.domain.policies.text_layer_quality import TextLayerQualityPolicy
 from document_worker.domain.value_objects.enums import (
     ExtractionMethod,
@@ -36,6 +37,8 @@ from document_worker.domain.value_objects.enums import (
 )
 from document_worker.domain.value_objects.identifiers import EventId
 from document_worker.domain.value_objects.paging import PageNumber
+from document_worker.infrastructure.ocr.preprocessor import OpenCvImagePreprocessor
+from document_worker.infrastructure.ocr.rapidocr_engine import RapidOcrEngine
 from document_worker.infrastructure.pdf.pdfplumber_text_reader import (
     PdfPlumberDocumentReader,
 )
@@ -97,15 +100,20 @@ def claim_service(
 
 
 @pytest.fixture
-def process_page(
+def process_page(  # noqa: PLR0913, PLR0917 — обработка страницы собирается из всех этих частей
     uow_factory: UnitOfWorkFactory,
+    cpu_pool: CpuPool,
     clock: FixedClock,
     ids: SequentialIdGenerator,
     config: ProcessingConfig,
+    model_dir: Path,
 ) -> ProcessDocumentPage:
     return ProcessDocumentPage(
         uow_factory=uow_factory,
         normalizer=TextNormalizer(),
+        preprocessor=OpenCvImagePreprocessor(pool=cpu_pool),
+        engine=RapidOcrEngine(pool=cpu_pool, model_dir=model_dir),
+        legibility=PageLegibilityPolicy(),
         ids=ids,
         clock=clock,
         config=config,
@@ -286,21 +294,22 @@ async def test_repeated_page_is_not_counted_twice(
     assert job.pages_text_layer == 1
 
 
-async def test_page_needing_recognition_fails_until_ocr_arrives(
+async def test_page_without_text_layer_is_read_by_recognition(
     open_case: OpenCase,
     process_page: ProcessDocumentPage,
     tmp_path: Path,
 ) -> None:
-    # Распознавания ещё нет, и страница сохраняется отказом, а не пропадает.
-    path = pdf_builder.make_scan_pdf(tmp_path / "doc.pdf")
+    # У страницы нет текстового слоя, и читает её распознавание: отказ здесь
+    # означал бы, что сканы для сервиса не существуют.
+    path = pdf_builder.make_ocr_scan_pdf(tmp_path / "doc.pdf")
 
     async with open_case(path) as case:
         result = await process_page.execute(case.command())
 
     assert result.persisted
-    assert result.status is PageStatus.FAILED
-    assert result.method is ExtractionMethod.NONE
-    assert result.failure_reason is PageFailureReason.OCR_FAILED
+    assert result.method is ExtractionMethod.OCR
+    assert result.confidence is not None
+    assert result.char_count > 0
 
 
 async def test_page_level_error_is_stored_as_a_failed_page(
@@ -335,20 +344,20 @@ async def test_page_level_error_is_stored_as_a_failed_page(
     assert result.failure_reason is PageFailureReason.RENDER_FAILED
 
 
-async def test_failed_page_counts_as_failed_in_the_job(
+async def test_recognized_page_counts_as_ocr_in_the_job(
     open_case: OpenCase,
     process_page: ProcessDocumentPage,
     uow_factory: UnitOfWorkFactory,
     tmp_path: Path,
 ) -> None:
-    path = pdf_builder.make_scan_pdf(tmp_path / "doc.pdf")
+    path = pdf_builder.make_ocr_scan_pdf(tmp_path / "doc.pdf")
 
     async with open_case(path) as case:
         await process_page.execute(case.command())
         document = case.document
 
     job = await _stored_job(uow_factory, document)
-    assert job.pages_failed == 1
+    assert job.pages_ocr == 1
     assert job.pages_text_layer == 0
 
 

@@ -89,11 +89,9 @@ class DocumentPage:
             self._validate_render()
 
     def _validate_render(self) -> None:
-        if self.image_ref is None:
-            raise InvariantViolation(
-                "распознанную страницу нельзя перепроверить без её рендера",
-                context={"page": int(self.number)},
-            )
+        # Ссылка на изображение необязательна: рендер воспроизводится из
+        # исходного PDF детерминированно, и хранить его незачем. А вот без
+        # разрешения он невоспроизводим, поэтому оно обязательно.
         if self.render_dpi is None or not (
             MIN_RENDER_DPI <= self.render_dpi <= MAX_RENDER_DPI
         ):
@@ -139,9 +137,9 @@ class DocumentPage:
         content: str,
         method: ExtractionMethod,
         verdict: PageLegibilityVerdict,
-        image_ref: ObjectRef,
         render_dpi: int,
         now: datetime,
+        image_ref: ObjectRef | None = None,
     ) -> Self:
         """Страница, полученная распознаванием: OCR или гибрид."""
         return cls(
