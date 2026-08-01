@@ -12,7 +12,7 @@ from alembic.script import ScriptDirectory
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
-from tests.integration.conftest import alembic_config
+from tests.conftest import alembic_config
 
 if TYPE_CHECKING:
     from sqlalchemy import TextClause

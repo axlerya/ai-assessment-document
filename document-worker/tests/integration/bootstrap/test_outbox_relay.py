@@ -31,7 +31,7 @@ if TYPE_CHECKING:
 
     from document_worker.application.dto.results import OutboxRecordDTO
     from document_worker.application.ports.unit_of_work import UnitOfWorkFactory
-    from tests.integration.conftest import Management
+    from tests.conftest import Management
 
 pytestmark = pytest.mark.integration
 

@@ -20,7 +20,7 @@ if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncEngine
     from testcontainers.community.minio import MinioContainer
 
-    from tests.integration.conftest import Management
+    from tests.conftest import Management
 
 pytestmark = pytest.mark.integration
 

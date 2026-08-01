@@ -33,7 +33,7 @@ from document_worker.infrastructure.messaging.topology import (
 
 if TYPE_CHECKING:
     from document_worker.infrastructure.messaging.topology import Topology
-    from tests.integration.conftest import Management
+    from tests.conftest import Management
 
 pytestmark = pytest.mark.integration
 

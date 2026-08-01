@@ -353,3 +353,29 @@ def make_ocr_scan_pdf(path: Path, *, pages: int = 1) -> Path:
             )
         pdf.save(path, deterministic_id=True)
     return path
+
+
+def make_partially_readable_scan_pdf(path: Path) -> Path:
+    """Скан, где одна страница читается, а вторая пуста.
+
+    Пустая страница даёт `illegible`, и документ обязан стать
+    `partially_processed`, а не притвориться полностью обработанным.
+    """
+    pages = (make_page_image(), make_page_image(lines=()))
+    with pikepdf.new() as pdf:
+        for image in pages:
+            buffer = io.BytesIO()
+            image.convert("RGB").save(buffer, format="JPEG", quality=90)
+            xobject = pdf.make_stream(buffer.getvalue())
+            xobject.Type = pikepdf.Name.XObject
+            xobject.Subtype = pikepdf.Name.Image
+            xobject.Width = image.width
+            xobject.Height = image.height
+            xobject.ColorSpace = pikepdf.Name.DeviceRGB
+            xobject.BitsPerComponent = 8
+            xobject.Filter = pikepdf.Name.DCTDecode
+            _append_page(
+                pdf, _draw_full_page_image(), xobject=pdf.make_indirect(xobject)
+            )
+        pdf.save(path, deterministic_id=True)
+    return path
