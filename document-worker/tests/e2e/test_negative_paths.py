@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING
 
 import pytest
@@ -183,3 +184,23 @@ async def _counts(harness: Harness, document: Document) -> tuple[int, int]:
         id=document.id.value,
     )
     return (rows[0].pages, rows[0].chunks)
+
+
+async def test_no_document_text_appears_in_logs(
+    harness: Harness,
+    document: Document,
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # Утечка в логи необратима: их хранилище живёт годами, доступ к нему шире,
+    # чем к базе, и вырезать оттуда одну строку задним числом нельзя.
+    caplog.set_level(logging.DEBUG)
+    source = pdf_builder.make_text_pdf(tmp_path / "source.pdf", pages=PAGES)
+
+    await _process(harness, document, source.read_bytes())
+    await harness.wait_for_event(document)
+
+    logged = caplog.text
+    assert logged
+    for line in pdf_builder.DEFAULT_LINES:
+        assert line not in logged
