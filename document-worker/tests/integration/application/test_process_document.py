@@ -6,14 +6,16 @@
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass, fields, replace
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import pytest
 
 from document_worker.application.dto.commands import ProcessDocumentCommand
 from document_worker.application.errors import (
     ConcurrentProcessingError,
+    DatabaseUnavailableError,
     ProcessingDeadlineExceededError,
     StorageUnavailableError,
     UnsupportedMediaTypeError,
@@ -82,6 +84,7 @@ if TYPE_CHECKING:
 
     from document_worker.application.config import ProcessingConfig
     from document_worker.application.ports.unit_of_work import UnitOfWorkFactory
+    from document_worker.application.services.message_claim import ClaimResult
     from document_worker.domain.entities.document import Document
     from document_worker.infrastructure.cpu.executor import CpuPool
     from tests.fakes.system import FixedClock, SequentialIdGenerator
@@ -406,6 +409,63 @@ async def test_transient_error_releases_the_claim_for_the_next_delivery(
     result = await wiring.process.execute(command)
 
     assert result.status is DocumentStatus.PROCESSED
+
+
+async def test_cancellation_releases_the_claim_for_the_next_delivery(
+    session: AsyncSession,
+    wiring: Wiring,
+    tmp_path: Path,
+) -> None:
+    # Остановка воркера приходит отменой. Не отпустив захват, прерванный
+    # выкаткой документ ждал бы протухания лиза, а лиз по построению длиннее
+    # любой обработки — полтора часа простоя на каждый недоделанный документ.
+    document = await _document_with_source(session, wiring, tmp_path)
+    wiring.storage.fail_next(asyncio.CancelledError())
+    command = _command(document)
+    with pytest.raises(asyncio.CancelledError):
+        await wiring.process.execute(command)
+
+    result = await wiring.process.execute(command)
+
+    assert result.status is DocumentStatus.PROCESSED
+
+
+@dataclass(frozen=True, slots=True)
+class _ClaimServiceThatCannotRelease:
+    """Захват берётся как обычно, а отпустить его не удаётся."""
+
+    inner: MessageClaimService
+
+    async def claim(self, command: ProcessDocumentCommand) -> ClaimResult:
+        """Занимает сообщение."""
+        return await self.inner.claim(command)
+
+    async def release(self, command: ProcessDocumentCommand) -> None:
+        """Не отпускает захват: база недоступна."""
+        del command
+        raise DatabaseUnavailableError("база недоступна")
+
+
+async def test_cancellation_survives_a_database_outage_during_release(
+    session: AsyncSession,
+    wiring: Wiring,
+    tmp_path: Path,
+) -> None:
+    # Остановка при недоступной базе обязана остаться отменой: подменив её
+    # ошибкой базы, подписчик принял бы остановку за неизвестный сбой и
+    # опубликовал бы копию сообщения на повтор — прямо во время выключения.
+    document = await _document_with_source(session, wiring, tmp_path)
+    wiring.storage.fail_next(asyncio.CancelledError())
+    process = replace(
+        wiring.process,
+        claim_service=cast(
+            "MessageClaimService",
+            _ClaimServiceThatCannotRelease(wiring.process.claim_service),
+        ),
+    )
+
+    with pytest.raises(asyncio.CancelledError):
+        await process.execute(_command(document))
 
 
 async def test_temp_workspace_is_removed_after_processing(

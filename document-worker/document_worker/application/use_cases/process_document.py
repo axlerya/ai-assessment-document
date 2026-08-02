@@ -1,4 +1,4 @@
-"""Оркестратор обработки документа: последовательность шагов и два except.
+"""Оркестратор обработки документа: последовательность шагов и разбор исходов.
 
 Фабрики единиц работы здесь нет намеренно — транзакции держат исполнители,
 и открыть транзакцию поверх цикла по страницам оркестратору физически нечем.
@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Final
 
@@ -88,6 +89,16 @@ class ProcessDocument:
         try:
             async with asyncio.timeout(self.config.document_timeout_s):
                 return await self._process(command, claim)
+        except asyncio.CancelledError:
+            # Остановка воркера. Захват отпускается сразу: лиз по построению
+            # длиннее любой обработки, и следующая доставка иначе получала бы
+            # отказ по занятости, пока он не протухнет.
+            with contextlib.suppress(Exception):
+                # База при остановке может быть уже недоступна. Подменить
+                # отмену её ошибкой нельзя: подписчик принял бы остановку за
+                # неизвестный сбой и опубликовал копию сообщения.
+                await self.claim_service.release(command)
+            raise
         except PermanentError as error:
             # Результат зафиксирован, и повторять нечего: presentation
             # подтверждает сообщение и кладёт копию в DLQ для разбора.

@@ -31,10 +31,10 @@ class InMemoryObjectStorage:
         """Создаёт пустое хранилище."""
         self._objects: dict[tuple[str, str], bytes] = {}
         self._content_type = content_type
-        self._next_error: Exception | None = None
+        self._next_error: BaseException | None = None
         self.downloads: list[ObjectRef] = []
 
-    def fail_next(self, error: Exception) -> None:
+    def fail_next(self, error: BaseException) -> None:
         """Роняет следующее обращение к хранилищу и починится сам."""
         self._next_error = error
 
