@@ -105,4 +105,13 @@ jobs:
           enable-cache: true
           cache-dependency-glob: "document-worker/uv.lock"
       - run: uv sync --frozen
+      # Тесты корпуса рисуют кириллицу закреплённым шрифтом: без него они не
+      # проверяют ничего, а качать его на каждый прогон незачем.
+      - name: Кэш шрифтов корпуса
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/.fonts
+          key: corpus-fonts-${{ hashFiles('document-worker/eval/fonts.py') }}
       - run: uv run pytest -m unit
+        env:
+          EVAL__FONT_DIR: ${{ github.workspace }}/.fonts

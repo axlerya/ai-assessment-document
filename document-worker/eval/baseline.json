@@ -1,0 +1,134 @@
+{
+  "aggregate": {
+    "boundary_f1": 0.4941,
+    "cer": 0.1634,
+    "chunk_coverage": 0.9946,
+    "chunk_page_linkage_errors": 0.0,
+    "confidence_calibration_rho": -0.0391,
+    "false_ocr_rate": 0.0,
+    "hallucination_rate": 0.0,
+    "illegible_false_positive_rate": 0.3488,
+    "illegible_recall": 1.0,
+    "missed_ocr_rate": 0.0,
+    "text_layer_detection_accuracy": 1.0,
+    "wer": 0.1647
+  },
+  "by_category": {
+    "clean_scan": {
+      "boundary_f1": 0.477,
+      "cer": 0.302,
+      "pages": 10.0,
+      "wer": 0.304
+    },
+    "complex_layout": {
+      "boundary_f1": 0.475,
+      "cer": 0.0949,
+      "pages": 6.0,
+      "wer": 0.0921
+    },
+    "digital_pdf": {
+      "boundary_f1": 0.42,
+      "cer": 0.0,
+      "pages": 13.0,
+      "wer": 0.0
+    },
+    "noisy_scan": {
+      "boundary_f1": 0.542,
+      "cer": 0.2666,
+      "pages": 10.0,
+      "wer": 0.2722
+    },
+    "partially_unreadable": {
+      "boundary_f1": 0.647,
+      "cer": 0.1869,
+      "pages": 5.0,
+      "wer": 0.1861
+    }
+  },
+  "chunking_version": "1.0.0",
+  "corpus_hash": "ad686cfe908f3d3ef1131a23f16c1b0cef26fa4a7c2da422d89a68f53f33f897",
+  "corpus_version": "1.0.0",
+  "font_version": "dejavu-2.37",
+  "thresholds": {
+    "aggregate": {
+      "boundary_f1": {
+        "min": 0.42
+      },
+      "cer": {
+        "max": 0.22
+      },
+      "chunk_coverage": {
+        "min": 0.95
+      },
+      "chunk_page_linkage_errors": {
+        "max": 0.0
+      },
+      "confidence_calibration_rho": {
+        "min": -0.15
+      },
+      "false_ocr_rate": {
+        "max": 0.05
+      },
+      "hallucination_rate": {
+        "max": 0.0
+      },
+      "illegible_false_positive_rate": {
+        "max": 0.45
+      },
+      "illegible_recall": {
+        "min": 0.7
+      },
+      "missed_ocr_rate": {
+        "max": 0.05
+      },
+      "text_layer_detection_accuracy": {
+        "min": 0.95
+      },
+      "wer": {
+        "max": 0.22
+      }
+    },
+    "by_category": {
+      "clean_scan": {
+        "cer": {
+          "max": 0.36
+        },
+        "wer": {
+          "max": 0.37
+        }
+      },
+      "complex_layout": {
+        "cer": {
+          "max": 0.16
+        },
+        "wer": {
+          "max": 0.16
+        }
+      },
+      "digital_pdf": {
+        "cer": {
+          "max": 0.01
+        },
+        "wer": {
+          "max": 0.01
+        }
+      },
+      "noisy_scan": {
+        "cer": {
+          "max": 0.33
+        },
+        "wer": {
+          "max": 0.34
+        }
+      },
+      "partially_unreadable": {
+        "cer": {
+          "max": 0.25
+        },
+        "wer": {
+          "max": 0.25
+        }
+      }
+    }
+  }
+}
