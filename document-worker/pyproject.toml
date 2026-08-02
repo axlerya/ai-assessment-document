@@ -56,7 +56,7 @@ dev = [
     { include-group = "eval" },
 ]
 # Оценка качества не нужна работающему сервису: в образ эта группа не едет.
-eval = ["rapidfuzz>=3.14,<4"]
+eval = ["rapidfuzz>=3.14,<4", "fpdf2>=2.8,<3"]
 test = [
     "pytest>=9.1.1",
     "pytest-asyncio>=1.4.0",

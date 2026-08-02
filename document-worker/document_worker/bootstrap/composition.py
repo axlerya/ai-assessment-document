@@ -90,7 +90,19 @@ if TYPE_CHECKING:
     from faststream.rabbit import RabbitBroker, RabbitRouter
     from sqlalchemy.ext.asyncio import AsyncEngine
 
+    from document_worker.application.ports.object_storage import ObjectStorage
+    from document_worker.application.ports.unit_of_work import UnitOfWorkFactory
     from document_worker.infrastructure.config.settings import AppSettings
+
+
+@dataclass(frozen=True, slots=True)
+class Processing:
+    """Обработка документа без брокера: всё, что читает и пишет документы."""
+
+    settings: AppSettings
+    engine: AsyncEngine
+    uow_factory: UnitOfWorkFactory
+    process_document: ProcessDocument
 
 
 @dataclass(frozen=True, slots=True)
@@ -106,8 +118,18 @@ class Services:
 
 
 @contextlib.asynccontextmanager
-async def build_services(settings: AppSettings) -> AsyncIterator[Services]:
-    """Собирает сервис и освобождает его ресурсы при любом исходе."""
+async def build_processing(
+    settings: AppSettings,
+    *,
+    storage: ObjectStorage,
+) -> AsyncIterator[Processing]:
+    """Собирает обработку документа поверх заданного хранилища.
+
+    Отделена от брокера, потому что у неё есть второй потребитель: стенд
+    оценки качества гоняет корпус через этот же `ProcessDocument`, и очередей
+    ему не нужно. Собирать для него отдельную проводку значило бы измерять
+    другую реализацию.
+    """
     config = settings.processing_config()
     # Модели проверяются до того, как сервис начнёт принимать сообщения:
     # отсутствие модели — ошибка конфигурации, а не первого документа.
@@ -124,21 +146,8 @@ async def build_services(settings: AppSettings) -> AsyncIterator[Services]:
         )
         stack.push_async_callback(engine.dispose)
         uow_factory = build_unit_of_work_factory(build_session_factory(engine))
-
-        storage = await stack.enter_async_context(S3ObjectStorage(_s3_config(settings)))
         pool = await stack.enter_async_context(
             CpuPool(max_workers=settings.processing.cpu_workers)
-        )
-        broker = build_broker(
-            settings.rabbit.url.get_secret_value(),
-            graceful_timeout_s=settings.rabbit.graceful_timeout_s,
-        )
-        stack.push_async_callback(broker.stop)
-
-        topology = build_topology(
-            consumer_timeout_ms=settings.rabbit.consumer_timeout_ms,
-            delivery_limit=settings.rabbit.delivery_limit,
-            declare_audit_queue=settings.rabbit.declare_audit_queue,
         )
         process_document = ProcessDocument(
             claim_service=MessageClaimService(
@@ -186,10 +195,38 @@ async def build_services(settings: AppSettings) -> AsyncIterator[Services]:
             workspaces=TempDirWorkspaceFactory(base_dir=_temp_root(settings)),
             config=config,
         )
+        yield Processing(
+            settings=settings,
+            engine=engine,
+            uow_factory=uow_factory,
+            process_document=process_document,
+        )
+
+
+@contextlib.asynccontextmanager
+async def build_services(settings: AppSettings) -> AsyncIterator[Services]:
+    """Собирает сервис и освобождает его ресурсы при любом исходе."""
+    config = settings.processing_config()
+    async with contextlib.AsyncExitStack() as stack:
+        storage = await stack.enter_async_context(S3ObjectStorage(_s3_config(settings)))
+        processing = await stack.enter_async_context(
+            build_processing(settings, storage=storage)
+        )
+        broker = build_broker(
+            settings.rabbit.url.get_secret_value(),
+            graceful_timeout_s=settings.rabbit.graceful_timeout_s,
+        )
+        stack.push_async_callback(broker.stop)
+
+        topology = build_topology(
+            consumer_timeout_ms=settings.rabbit.consumer_timeout_ms,
+            delivery_limit=settings.rabbit.delivery_limit,
+            declare_audit_queue=settings.rabbit.declare_audit_queue,
+        )
         router = build_process_document_router(
             queue=topology.process_requested,
             exchange=topology.commands,
-            processor=process_document,
+            processor=processing.process_document,
             retrier=RetryPublisher(
                 broker=broker,
                 topology=topology,
@@ -205,18 +242,18 @@ async def build_services(settings: AppSettings) -> AsyncIterator[Services]:
         await declare_topology(broker, topology)
         yield Services(
             settings=settings,
-            engine=engine,
+            engine=processing.engine,
             broker=broker,
             router=router,
-            process_document=process_document,
+            process_document=processing.process_document,
             publish_outbox=PublishOutboxEvents(
-                uow_factory=uow_factory,
+                uow_factory=processing.uow_factory,
                 publisher=RabbitEventPublisher(
                     broker=broker,
                     exchange=topology.events,
                     publish_timeout_s=settings.rabbit.publish_timeout_s,
                 ),
-                clock=clock,
+                clock=SystemClock(),
                 config=config.outbox,
                 lease_owner=settings.messaging.consumer_name,
             ),
