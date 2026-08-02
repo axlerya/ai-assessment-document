@@ -15,6 +15,7 @@ if TYPE_CHECKING:
 
     from document_worker.domain.entities.document import Document
     from tests.e2e.conftest import Harness
+    from tests.fakes.network import BreakableLink
 
 pytestmark = pytest.mark.e2e
 
@@ -124,6 +125,39 @@ async def test_missing_object_in_storage_is_a_permanent_failure(
         "SELECT status FROM documents WHERE id = :id", id=document.id.value
     )
     assert rows[0].status == DocumentStatus.FAILED.value
+
+
+async def test_storage_unavailable_is_retried_and_succeeds_after_recovery(
+    harness: Harness,
+    document: Document,
+    tmp_path: Path,
+    storage_link: BreakableLink,
+) -> None:
+    # Недоступность хранилища временная: документ обязан пройти ступень
+    # задержки и обработаться, а не уйти в разбор с первой же попытки.
+    source = pdf_builder.make_text_pdf(tmp_path / "source.pdf", pages=PAGES)
+    harness.put_object(document.source.ref, source.read_bytes())
+
+    with storage_link.broken():
+        await harness.request_processing(document)
+        await harness.wait_for_release(document)
+
+    event = await harness.wait_for_event(document)
+
+    assert event["pages_total"] == PAGES
+    rows = await harness.rows(
+        "SELECT m.attempts, d.status,"
+        " (SELECT count(*) FROM document_pages WHERE document_id = m.document_id)"
+        " AS pages"
+        " FROM processed_messages m JOIN documents d ON d.id = m.document_id"
+        " WHERE m.document_id = :id",
+        id=document.id.value,
+    )
+    # Вторая попытка того же сообщения, а не вторая обработка: провалившаяся
+    # первая не оставила ни строки.
+    assert rows[0].attempts == 2
+    assert rows[0].pages == PAGES
+    assert rows[0].status == DocumentStatus.PROCESSED.value
 
 
 async def test_partially_illegible_scan_is_not_reported_as_processed(
