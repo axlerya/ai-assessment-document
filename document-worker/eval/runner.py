@@ -83,9 +83,14 @@ async def process_document(
     processing: Processing,
     *,
     doc_id: str,
+    bucket: str = CORPUS_BUCKET,
 ) -> DocumentOutcome:
-    """Проводит документ корпуса через настоящую обработку."""
-    document = _pending_document(doc_id)
+    """Проводит документ корпуса через настоящую обработку.
+
+    Бакет задаётся снаружи, потому что ключ объекта уникален в пределах базы:
+    два корпуса в одном прогоне иначе столкнулись бы на одинаковых именах.
+    """
+    document = _pending_document(doc_id, bucket)
     await _insert(processing.engine, document)
     started = time.monotonic()
     result = await processing.process_document.execute(_command(document))
@@ -99,12 +104,12 @@ async def process_document(
     )
 
 
-def _pending_document(doc_id: str) -> Document:
+def _pending_document(doc_id: str, bucket: str) -> Document:
     now = datetime.now(UTC)
     return Document(
         id=DocumentId(uuid.uuid4()),
         source=SourceFile(
-            ref=ObjectRef(bucket=CORPUS_BUCKET, key=f"{doc_id}/{SOURCE_NAME}"),
+            ref=ObjectRef(bucket=bucket, key=f"{doc_id}/{SOURCE_NAME}"),
             mime_type=MimeType(MimeType.PDF),
             # Размер объявленный: настоящий сервис тоже узнаёт его от приёмника
             # и перепроверяет по факту скачивания.

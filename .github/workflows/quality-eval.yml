@@ -1,0 +1,107 @@
+name: Оценка качества
+
+# На каждом PR не гоняется: полный корпус упирается в распознавание и занимает
+# минуты, а нестабильность по времени сделала бы его источником ложных красных
+# сборок. На PR идёт только дымовой прогон — по метке.
+on:
+  schedule:
+    - cron: "0 2 * * *"
+  pull_request:
+    types: [labeled, synchronize]
+  workflow_dispatch:
+
+defaults:
+  run:
+    working-directory: document-worker
+
+env:
+  OCR__MODEL_DIR: ${{ github.workspace }}/.models
+  EVAL__FONT_DIR: ${{ github.workspace }}/.fonts
+
+jobs:
+  smoke:
+    name: Дымовая оценка
+    if: github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'run-eval')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - run: uv sync --frozen
+      - name: Кэш моделей распознавания
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.OCR__MODEL_DIR }}
+          key: ocr-models-${{ hashFiles('document-worker/document_worker/infrastructure/ocr/model_registry.py') }}
+      - name: Кэш шрифтов корпуса
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.EVAL__FONT_DIR }}
+          key: corpus-fonts-${{ hashFiles('document-worker/eval/fonts.py') }}
+      - name: Инварианты на подмножестве корпуса
+        run: uv run pytest tests/eval/test_smoke.py -m eval --cov-fail-under=0
+
+  nightly:
+    name: Полная оценка корпуса
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - run: uv sync --frozen
+      - name: Кэш моделей распознавания
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.OCR__MODEL_DIR }}
+          key: ocr-models-${{ hashFiles('document-worker/document_worker/infrastructure/ocr/model_registry.py') }}
+      - name: Кэш шрифтов корпуса
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.EVAL__FONT_DIR }}
+          key: corpus-fonts-${{ hashFiles('document-worker/eval/fonts.py') }}
+      - name: Гейты качества на полном корпусе
+        run: uv run pytest tests/eval -m eval --cov-fail-under=0
+      - name: Схема базы для отчёта
+        run: uv run alembic upgrade head
+        env:
+          DATABASE__DSN: postgresql+asyncpg://postgres:postgres@localhost:5432/docworker_eval
+      - name: Отчёт по корпусу
+        run: |
+          uv run python -m eval.run_eval \
+            --corpus "${RUNNER_TEMP}/corpus" \
+            --out reports \
+            --baseline eval/baseline.json
+        env:
+          DATABASE__DSN: postgresql+asyncpg://postgres:postgres@localhost:5432/docworker_eval
+          S3__ENDPOINT_URL: http://storage.invalid:9000
+          S3__ACCESS_KEY: eval
+          S3__SECRET_KEY: eval-secret
+          RABBIT__URL: amqp://guest:guest@broker.invalid:5672/
+      - name: Отчёты прогона
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: quality-report
+          path: |
+            document-worker/reports/report.json
+            document-worker/reports/report.md
+          if-no-files-found: warn
+          retention-days: 30
+
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: docworker_eval
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
