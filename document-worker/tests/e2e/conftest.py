@@ -17,6 +17,7 @@ import uuid
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
+from urllib.parse import urlsplit
 
 import pytest
 import pytest_asyncio
@@ -46,6 +47,7 @@ from tests.conftest import (
     alembic_config,
 )
 from tests.factories import make_document
+from tests.fakes.network import BreakableLink
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Iterator
@@ -157,6 +159,27 @@ class Harness:
             await asyncio.sleep(POLL_S)
         pytest.fail(f"события о документе {document_id} нет в очереди {queue}")
 
+    async def wait_for_release(self, document: Document) -> None:
+        """Дожидается, пока провалившаяся попытка отпустит захват сообщения.
+
+        Отпущенный захват — единственный след, который проваленная попытка
+        оставляет в базе: по нему сценарий и узнаёт, что она уже кончилась.
+        Сравниваются два поля одной строки, а не время с часами базы: захват
+        отпускают, приравнивая срок лиза к отметке изменения.
+        """
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + EVENT_TIMEOUT_S
+        while loop.time() < deadline:
+            released = await self.rows(
+                "SELECT 1 FROM processed_messages"
+                " WHERE document_id = :id AND lease_expires_at <= updated_at",
+                id=document.id.value,
+            )
+            if released:
+                return
+            await asyncio.sleep(POLL_S)
+        pytest.fail(f"захват сообщения документа {document.id} не отпущен")
+
     async def settle(self) -> None:
         """Даёт повторной доставке дойти до конца.
 
@@ -204,12 +227,25 @@ async def e2e_dsn(base_dsn: str) -> AsyncIterator[str]:
         await _drop_database(base_dsn, name)
 
 
+@pytest_asyncio.fixture(scope="session", loop_scope="session")
+async def storage_link(s3_config: S3Config) -> AsyncIterator[BreakableLink]:
+    """Связь сервиса с хранилищем, которую сценарий может порвать."""
+    target = urlsplit(s3_config.endpoint_url)
+    link = BreakableLink(target.hostname or "127.0.0.1", target.port or 80)
+    await link.start()
+    try:
+        yield link
+    finally:
+        await link.stop()
+
+
 @pytest.fixture(scope="session")
 def e2e_settings(  # noqa: PLR0913, PLR0917 — настройки собираются из всех этих частей
     e2e_dsn: str,
     rabbitmq_url: str,
     e2e_vhost: str,
     s3_config: S3Config,
+    storage_link: BreakableLink,
     e2e_bucket: str,
     model_dir: Path,
     tmp_path_factory: pytest.TempPathFactory,
@@ -223,7 +259,7 @@ def e2e_settings(  # noqa: PLR0913, PLR0917 — настройки собира�
                 "declare_audit_queue": True,
             },
             "s3": {
-                "endpoint_url": s3_config.endpoint_url,
+                "endpoint_url": storage_link.url,
                 "access_key": s3_config.access_key,
                 "secret_key": s3_config.secret_key,
                 "default_bucket": e2e_bucket,
