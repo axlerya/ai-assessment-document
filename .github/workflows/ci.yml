@@ -44,7 +44,7 @@ jobs:
           enable-cache: true
           cache-dependency-glob: "document-worker/uv.lock"
       - run: uv sync --frozen
-      - run: uv run mypy --strict document_worker tests
+      - run: uv run mypy --strict document_worker tests eval
 
   arch:
     name: Границы слоёв и зависимости
