@@ -166,11 +166,6 @@ class Claim:
                 context={"citations": foreign},
             )
 
-    @property
-    def has_reliable_citation(self) -> bool:
-        """Есть ли хоть одна цитата на надёжный фрагмент."""
-        return any(citation.reliable for citation in self.citations)
-
     @override
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, Claim):

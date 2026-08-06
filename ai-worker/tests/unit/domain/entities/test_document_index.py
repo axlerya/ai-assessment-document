@@ -173,3 +173,10 @@ def test_terminal_statuses_are_recognized() -> None:
 
     assert finished.is_terminal
     assert not _running().is_terminal
+
+
+def test_negative_counters_are_refused() -> None:
+    with pytest.raises(InvariantViolation):
+        _running().complete(
+            chunks_total=1, chunks_embedded=2, chunks_failed=-1, at=FINISHED
+        )

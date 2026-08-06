@@ -302,3 +302,96 @@ def test_empty_query_is_refused() -> None:
             chunking_version=ChunkingVersion(1, 0, 0),
             evidence_total=7,
         )
+
+
+def test_citation_length_must_match_its_span() -> None:
+    # Маппер читает цитату из базы отдельными колонками: расхождение длины
+    # означало бы ссылку не на тот фрагмент.
+    citation = _citation()
+
+    with pytest.raises(InvariantViolation):
+        Citation(
+            id=citation.id,
+            claim_id=citation.claim_id,
+            ref=citation.ref,
+            quote=citation.quote + "хвост",
+            span=citation.span,
+            retrieval_score=citation.retrieval_score,
+            rerank_score=citation.rerank_score,
+            reliable=citation.reliable,
+        )
+
+
+def test_claim_index_is_not_negative() -> None:
+    with pytest.raises(InvariantViolation):
+        _claim(index=-1)
+
+
+def test_claims_are_the_same_when_their_keys_match() -> None:
+    claim = _claim()
+    twin = Claim(
+        id=claim.id,
+        index=claim.index,
+        section=ClaimSection.DATES,
+        text="Другой текст того же утверждения.",
+        citations=claim.citations,
+        supported=True,
+    )
+
+    assert claim == twin
+    assert len({claim, twin}) == 1
+
+
+def test_claim_is_not_equal_to_anything_else() -> None:
+    assert _claim() != "утверждение"
+
+
+def test_drafts_are_the_same_when_their_keys_match() -> None:
+    request_id = RequestId.generate()
+    document_id = make_chunk().ref.document_id
+    first = Draft.assembled(
+        request_id=request_id,
+        document_id=document_id,
+        draft_type=DraftType.CASE_FACT_SUMMARY,
+        query="Собери сводку фактов по делу",
+        claims=(_claim(),),
+        model_name="deepseek-ai/DeepSeek-V4-Flash",
+        prompt_version=PROMPT_VERSION,
+        retrieval_profile="hybrid-rrf-v1",
+        embedding_version=EmbeddingVersion(1, 0, 0),
+        chunking_version=ChunkingVersion(1, 0, 0),
+        evidence_total=7,
+    )
+    second = Draft.assembled(
+        request_id=request_id,
+        document_id=document_id,
+        draft_type=DraftType.CASE_FACT_SUMMARY,
+        query="Другой запрос той же попытки",
+        claims=(_claim(index=5),),
+        model_name="deepseek-ai/DeepSeek-V4-Flash",
+        prompt_version=PROMPT_VERSION,
+        retrieval_profile="hybrid-rrf-v1",
+        embedding_version=EmbeddingVersion(1, 0, 0),
+        chunking_version=ChunkingVersion(1, 0, 0),
+        evidence_total=7,
+    )
+
+    assert first == second
+    assert len({first, second}) == 1
+
+
+def test_draft_is_not_equal_to_anything_else() -> None:
+    assert _draft((_claim(),)) != "черновик"
+
+
+def test_citations_are_counted_only_for_supported_claims() -> None:
+    # Счётчик уезжает в событие: цитаты отклонённых утверждений в нём означали
+    # бы подтверждения, которых в черновике нет.
+    supported = _claim(index=0)
+    rejected = _claim(
+        index=1, citations=(), supported=False, reject_code=RejectCode.NO_CITATION
+    )
+
+    draft = _draft((supported, rejected))
+
+    assert draft.citations_total == 1

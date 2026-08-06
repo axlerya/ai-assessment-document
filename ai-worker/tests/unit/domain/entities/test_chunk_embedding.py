@@ -154,3 +154,31 @@ def test_embedding_carries_the_chunking_version_of_its_source() -> None:
     )
 
     assert embedding.chunking_version == ChunkingVersion(2, 0, 0)
+
+
+def test_chunk_without_tokens_is_not_indexable() -> None:
+    with pytest.raises(InvariantViolation):
+        make_chunk(token_count=0)
+
+
+def test_content_hash_prints_its_hexadecimal_form() -> None:
+    digest = ContentHash.sha256_of("Договор")
+
+    assert str(digest) == digest.value
+
+
+def test_embedding_identity_prints_model_and_version() -> None:
+    # Эта строка уходит в лог и в метку метрики: по ней видно, чем именно
+    # построен вектор, без разбора двух отдельных полей.
+    assert str(EMBEDDING) == "BAAI/bge-m3@1.0.0"
+
+
+def test_embedding_is_not_equal_to_anything_else() -> None:
+    embedding = ChunkEmbedding.of(
+        chunk=make_chunk(),
+        embedding=EMBEDDING,
+        dense=make_dense(),
+        sparse=make_sparse(),
+    )
+
+    assert embedding != "эмбеддинг"
