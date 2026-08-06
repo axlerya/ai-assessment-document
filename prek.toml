@@ -34,8 +34,11 @@ hooks = [
 [[repos]]
 repo = "https://github.com/abravalheri/validate-pyproject"
 rev = "v0.25"
+# Хук читает файл кодировкой локали, а не UTF-8, как требует PEP 680. На
+# Windows это cp1251, в которой байт 0x98 — вторая половина буквы «И» — не
+# определён, и хук падает на любом pyproject.toml с этой буквой.
 hooks = [
-  { id = "validate-pyproject", files = "(^|/)pyproject\\.toml$" },
+  { id = "validate-pyproject", files = "(^|/)pyproject\\.toml$", env = { PYTHONUTF8 = "1" } },
 ]
 
 [[repos]]
