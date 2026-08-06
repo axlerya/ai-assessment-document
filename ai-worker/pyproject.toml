@@ -6,9 +6,10 @@ readme = "README.md"
 requires-python = ">=3.12,<3.14"
 license = "MIT"
 authors = [{ name = "Александр Рябов", email = "alexander.ryabov.002@gmail.com" }]
+# uvicorn появится вместе с точкой входа: сервер нужен, чтобы приложение
+# запустить, а не чтобы его собрать.
 dependencies = [
     "faststream[rabbit]>=0.7.3,<0.8",
-    "uvicorn>=0.42,<0.43",
 ]
 
 # [project.scripts] появится вместе с точкой входа на этапе композиционного
