@@ -93,8 +93,3 @@ class ExtractionMethod(StrEnum):
     TEXT_LAYER = "text_layer"
     OCR = "ocr"
     HYBRID = "hybrid"
-
-    @property
-    def is_recognized(self) -> bool:
-        """Участвовало ли распознавание — то есть есть ли у чанка уверенность."""
-        return self is not ExtractionMethod.TEXT_LAYER

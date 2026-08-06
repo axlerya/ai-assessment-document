@@ -109,6 +109,27 @@ def test_index_outside_the_vocabulary_is_rejected(index: int) -> None:
         SparseVector.pruned({index: 0.5})
 
 
+def test_vector_longer_than_the_limit_is_rejected_on_construction() -> None:
+    # Обрезка — не единственный вход: строку читает и маппер из базы, и вектор
+    # сверх предела означал бы индекс, который отказался бы строиться.
+    too_many = tuple((index, 0.5) for index in range(SPARSE_TOP_K + 1))
+
+    with pytest.raises(InvalidVector):
+        SparseVector(too_many)
+
+
+def test_unordered_weights_are_rejected_on_construction() -> None:
+    # Порядок — часть представления: литерал `sparsevec` требует возрастания
+    # индексов, и нарушение вскрылось бы уже на записи в базу.
+    with pytest.raises(InvalidVector):
+        SparseVector(((5, 0.9), (2, 0.4)))
+
+
+def test_repeated_index_is_rejected_on_construction() -> None:
+    with pytest.raises(InvalidVector):
+        SparseVector(((2, 0.9), (2, 0.4)))
+
+
 @pytest.mark.parametrize("weight", [0.0, -0.5, math.nan, math.inf])
 def test_non_positive_and_broken_weights_are_rejected(weight: float) -> None:
     # Разреженный выход модели даёт только положительные веса; ноль означал бы

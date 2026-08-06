@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import pytest
 
 from ai_worker.domain.errors import (
@@ -18,6 +20,11 @@ from ai_worker.domain.value_objects.versioning import (
     PromptVersion,
 )
 
+if TYPE_CHECKING:
+    # Общая механика семвера приватна: наружу отдаются только четыре
+    # конкретные версии. Тесту она нужна ровно как аннотация параметра.
+    from ai_worker.domain.value_objects.versioning import _SemanticVersion
+
 pytestmark = pytest.mark.unit
 
 # Свои — EmbeddingVersion и PromptVersion; чужие — ChunkingVersion и
@@ -26,7 +33,7 @@ ALL_VERSIONS = (EmbeddingVersion, PromptVersion, ChunkingVersion, PipelineVersio
 
 
 @pytest.mark.parametrize("version_class", ALL_VERSIONS)
-def test_version_parses_and_prints_back(version_class: type) -> None:
+def test_version_parses_and_prints_back(version_class: type[_SemanticVersion]) -> None:
     assert str(version_class.parse("2.11.3")) == "2.11.3"
 
 
@@ -44,7 +51,10 @@ def test_version_parses_and_prints_back(version_class: type) -> None:
         " 1.0.0",
     ],
 )
-def test_only_bare_semver_is_accepted(version_class: type, raw: str) -> None:
+def test_only_bare_semver_is_accepted(
+    version_class: type[_SemanticVersion],
+    raw: str,
+) -> None:
     # На версии держится вся идемпотентность: две записи одной величины
     # означают два namespace вместо одного.
     with pytest.raises(InvalidVersion):
@@ -52,9 +62,17 @@ def test_only_bare_semver_is_accepted(version_class: type, raw: str) -> None:
 
 
 @pytest.mark.parametrize("version_class", ALL_VERSIONS)
-def test_zero_major_is_rejected(version_class: type) -> None:
+def test_zero_major_is_rejected(version_class: type[_SemanticVersion]) -> None:
     with pytest.raises(InvalidVersion):
         version_class(0, 1, 0)
+
+
+@pytest.mark.parametrize(("minor", "patch"), [(-1, 0), (0, -1), (1000, 0), (0, 1000)])
+def test_minor_and_patch_stay_within_their_bounds(minor: int, patch: int) -> None:
+    # Границы проверяются и при прямом построении, а не только при разборе
+    # строки: версию собирает и маппер, читающий колонку из базы.
+    with pytest.raises(InvalidVersion):
+        EmbeddingVersion(1, minor, patch)
 
 
 @pytest.mark.parametrize(
@@ -67,7 +85,7 @@ def test_zero_major_is_rejected(version_class: type) -> None:
     ],
 )
 def test_each_version_reports_its_own_error(
-    version_class: type,
+    version_class: type[_SemanticVersion],
     error_class: type[InvalidVersion],
 ) -> None:
     # По коду ошибки видно, какая именно версия испорчена: одна общая ошибка
@@ -77,7 +95,13 @@ def test_each_version_reports_its_own_error(
 
 
 def test_version_types_are_not_interchangeable() -> None:
-    assert EmbeddingVersion(1, 0, 0) != PromptVersion(1, 0, 0)
+    # Сравнение через object: подстановку одного типа вместо другого
+    # запрещает mypy, а этот тест закрывает рантайм — иначе две разные
+    # версии совпали бы ключом в словаре.
+    embedding: object = EmbeddingVersion(1, 0, 0)
+    prompt: object = PromptVersion(1, 0, 0)
+
+    assert embedding != prompt
 
 
 def test_versions_are_ordered() -> None:

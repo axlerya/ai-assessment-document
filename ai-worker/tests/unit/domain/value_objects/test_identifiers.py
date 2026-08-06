@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -23,6 +24,11 @@ from ai_worker.domain.value_objects.identifiers import (
     RetrievalRunId,
 )
 from ai_worker.domain.value_objects.versioning import EmbeddingVersion, PromptVersion
+
+if TYPE_CHECKING:
+    # Общая база идентификаторов приватна намеренно: наружу отдаются только
+    # конкретные типы. Тесту она нужна ровно как аннотация параметра.
+    from ai_worker.domain.value_objects.identifiers import _UuidId
 
 pytestmark = pytest.mark.unit
 
@@ -48,14 +54,14 @@ NS_DOCWORKER_LITERAL = uuid.UUID("6f1c0f8e-6a1e-5b2a-9f3c-2d4e5a6b7c81")
 
 
 @pytest.mark.parametrize("identifier_class", ALL_IDENTIFIERS)
-def test_nil_uuid_is_rejected(identifier_class: type) -> None:
+def test_nil_uuid_is_rejected(identifier_class: type[_UuidId]) -> None:
     with pytest.raises(InvalidIdentifier):
         identifier_class(uuid.UUID(int=0))
 
 
 @pytest.mark.parametrize("identifier_class", ALL_IDENTIFIERS)
 def test_identifier_parses_and_prints_its_canonical_form(
-    identifier_class: type,
+    identifier_class: type[_UuidId],
 ) -> None:
     raw = "0f4a1d3c-2b5e-4a6f-8c9d-1e2f3a4b5c6d"
 
@@ -63,7 +69,7 @@ def test_identifier_parses_and_prints_its_canonical_form(
 
 
 @pytest.mark.parametrize("identifier_class", ALL_IDENTIFIERS)
-def test_garbage_is_not_an_identifier(identifier_class: type) -> None:
+def test_garbage_is_not_an_identifier(identifier_class: type[_UuidId]) -> None:
     with pytest.raises(InvalidIdentifier):
         identifier_class.parse("не-uuid")
 
@@ -73,8 +79,13 @@ def test_identifier_types_are_not_interchangeable() -> None:
     # ловит mypy, а равенство не должно её маскировать в рантайме.
     value = uuid.uuid4()
 
-    assert DraftId(value) != ClaimId(value)
-    assert ChunkId(value) != PageId(value)
+    draft: object = DraftId(value)
+    claim: object = ClaimId(value)
+    chunk: object = ChunkId(value)
+    page: object = PageId(value)
+
+    assert draft != claim
+    assert chunk != page
 
 
 def test_namespace_does_not_collide_with_the_other_service() -> None:

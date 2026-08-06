@@ -76,3 +76,11 @@ def test_ratio_of_nothing_is_zero_not_a_division_error() -> None:
 def test_ratio_rejects_a_part_bigger_than_the_whole() -> None:
     with pytest.raises(InvalidScore):
         Ratio.of(part=5, whole=4)
+
+
+@pytest.mark.parametrize(("part", "whole"), [(-1, 4), (1, -4), (-1, -4)])
+def test_ratio_rejects_negative_counts(part: int, whole: int) -> None:
+    # Отрицательный счётчик означает ошибку подсчёта утверждений выше по
+    # потоку, и превращать её в правдоподобную долю нельзя.
+    with pytest.raises(InvalidScore):
+        Ratio.of(part=part, whole=whole)
