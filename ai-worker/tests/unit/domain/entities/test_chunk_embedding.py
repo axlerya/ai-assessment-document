@@ -7,6 +7,7 @@ import pytest
 from ai_worker.domain.entities.chunk_embedding import ChunkEmbedding
 from ai_worker.domain.entities.source_chunk import ChunkQuality, ChunkRef
 from ai_worker.domain.errors import InvariantViolation
+from ai_worker.domain.value_objects.embedding_identity import EmbeddingIdentity
 from ai_worker.domain.value_objects.enums import ExtractionMethod
 from ai_worker.domain.value_objects.hashing import ContentHash
 from ai_worker.domain.value_objects.identifiers import (
@@ -22,7 +23,7 @@ from tests.factories import make_chunk, make_dense, make_sparse
 pytestmark = pytest.mark.unit
 
 EMBEDDING_VERSION = EmbeddingVersion(1, 0, 0)
-MODEL = "BAAI/bge-m3"
+EMBEDDING = EmbeddingIdentity(version=EMBEDDING_VERSION, model_name="BAAI/bge-m3")
 
 
 def test_page_number_starts_at_one() -> None:
@@ -88,8 +89,7 @@ def test_embedding_is_built_from_its_chunk() -> None:
 
     embedding = ChunkEmbedding.of(
         chunk=chunk,
-        embedding_version=EMBEDDING_VERSION,
-        model_name=MODEL,
+        embedding=EMBEDDING,
         dense=make_dense(),
         sparse=make_sparse(),
     )
@@ -105,8 +105,7 @@ def test_embedding_key_is_determined_by_chunk_and_version() -> None:
 
     embedding = ChunkEmbedding.of(
         chunk=chunk,
-        embedding_version=EMBEDDING_VERSION,
-        model_name=MODEL,
+        embedding=EMBEDDING,
         dense=make_dense(),
         sparse=make_sparse(),
     )
@@ -118,30 +117,23 @@ def test_embedding_key_is_determined_by_chunk_and_version() -> None:
 
 def test_embedding_without_a_model_name_is_meaningless() -> None:
     # Имя модели — часть происхождения вектора: без него нельзя ни объяснить
-    # выдачу, ни решить, нужна ли переиндексация.
+    # выдачу, ни решить, нужна ли переиндексация. Версия и модель — одно
+    # значение, поэтому проверка живёт там, а не в каждом её потребителе.
     with pytest.raises(InvariantViolation):
-        ChunkEmbedding.of(
-            chunk=make_chunk(),
-            embedding_version=EMBEDDING_VERSION,
-            model_name="  ",
-            dense=make_dense(),
-            sparse=make_sparse(),
-        )
+        EmbeddingIdentity(version=EMBEDDING_VERSION, model_name="  ")
 
 
 def test_embedding_is_identified_by_its_key_not_by_its_vectors() -> None:
     chunk = make_chunk()
     first = ChunkEmbedding.of(
         chunk=chunk,
-        embedding_version=EMBEDDING_VERSION,
-        model_name=MODEL,
+        embedding=EMBEDDING,
         dense=make_dense(0.01),
         sparse=make_sparse(),
     )
     second = ChunkEmbedding.of(
         chunk=chunk,
-        embedding_version=EMBEDDING_VERSION,
-        model_name=MODEL,
+        embedding=EMBEDDING,
         dense=make_dense(0.02),
         sparse=make_sparse(),
     )
@@ -156,8 +148,7 @@ def test_embedding_carries_the_chunking_version_of_its_source() -> None:
 
     embedding = ChunkEmbedding.of(
         chunk=chunk,
-        embedding_version=EMBEDDING_VERSION,
-        model_name=MODEL,
+        embedding=EMBEDDING,
         dense=make_dense(),
         sparse=make_sparse(),
     )

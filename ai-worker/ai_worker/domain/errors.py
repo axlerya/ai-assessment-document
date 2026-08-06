@@ -112,3 +112,15 @@ class InvalidTextSpan(InvalidValueObject):
     """Диапазон цитаты перевёрнут, пуст или выходит за пределы текста."""
 
     code: ClassVar[str] = "invalid_text_span"
+
+
+class InvalidStatusTransition(InvariantViolation):
+    """Переход статуса запрещён таблицей переходов."""
+
+    code: ClassVar[str] = "invalid_status_transition"
+
+
+class FabricatedQuote(InvariantViolation):
+    """Цитата не является срезом текста своего чанка."""
+
+    code: ClassVar[str] = "fabricated_quote"

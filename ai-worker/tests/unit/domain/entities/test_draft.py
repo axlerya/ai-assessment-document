@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import pytest
 
 from ai_worker.domain.entities.draft import Citation, Claim, Draft
@@ -22,6 +24,9 @@ from ai_worker.domain.value_objects.versioning import (
 )
 from tests.factories import CHUNK_TEXT, make_chunk
 
+if TYPE_CHECKING:
+    from ai_worker.domain.entities.source_chunk import SourceChunk
+
 pytestmark = pytest.mark.unit
 
 PROMPT_VERSION = PromptVersion(1, 0, 0)
@@ -32,13 +37,14 @@ QUOTE_SPAN = QuoteSpan(start=0, end=len(QUOTE))
 def _citation(
     *,
     claim_id: ClaimId | None = None,
+    chunk: SourceChunk | None = None,
     quote: str = QUOTE,
     span: QuoteSpan | None = None,
     reliable: bool = True,
 ) -> Citation:
     return Citation.for_quote(
         claim_id=claim_id or ClaimId.generate(),
-        chunk=make_chunk(),
+        chunk=chunk or make_chunk(),
         span=span or QUOTE_SPAN,
         quote=quote,
         retrieval_score=Score(0.9),
@@ -108,11 +114,21 @@ def test_citation_rejects_a_span_outside_the_chunk() -> None:
 
 def test_citation_key_is_determined_by_claim_chunk_and_offset() -> None:
     claim_id = ClaimId.generate()
+    chunk = make_chunk()
 
-    first = _citation(claim_id=claim_id)
-    second = _citation(claim_id=claim_id)
+    first = _citation(claim_id=claim_id, chunk=chunk)
+    second = _citation(claim_id=claim_id, chunk=chunk)
 
     assert first.id == second.id
+
+
+def test_citations_to_different_chunks_do_not_share_a_key() -> None:
+    claim_id = ClaimId.generate()
+
+    first = _citation(claim_id=claim_id, chunk=make_chunk())
+    second = _citation(claim_id=claim_id, chunk=make_chunk())
+
+    assert first.id != second.id
 
 
 def test_citation_keeps_the_coordinates_needed_to_check_it() -> None:

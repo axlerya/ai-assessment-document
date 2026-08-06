@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import pytest
 
 from ai_worker.domain.entities.evidence import Evidence
@@ -9,6 +11,9 @@ from ai_worker.domain.errors import InvariantViolation
 from ai_worker.domain.value_objects.enums import ExtractionMethod
 from ai_worker.domain.value_objects.scores import RrfScore, Score
 from tests.factories import make_chunk, make_quality
+
+if TYPE_CHECKING:
+    from ai_worker.domain.entities.source_chunk import ChunkQuality
 
 pytestmark = pytest.mark.unit
 
@@ -18,11 +23,10 @@ def _evidence(
     dense_rank: int | None = 1,
     sparse_rank: int | None = 4,
     rerank_score: Score | None = None,
-    quality: object | None = None,
+    quality: ChunkQuality | None = None,
 ) -> Evidence:
-    chunk = make_chunk(quality=quality) if quality is not None else make_chunk()
     return Evidence(
-        chunk=chunk,
+        chunk=make_chunk(quality=quality),
         dense_rank=dense_rank,
         dense_score=None if dense_rank is None else Score(0.81),
         sparse_rank=sparse_rank,
@@ -98,8 +102,18 @@ def test_reranking_twice_is_refused() -> None:
 
 def test_ordering_score_is_the_rerank_score_when_it_exists() -> None:
     # Контекст собирается по итогам реранкинга, а до него — по слиянию.
-    assert _evidence(rerank_score=Score(2.5)).ordering_score == Score(2.5)
-    assert _evidence().ordering_score == Score(0.031)
+    assert _evidence(rerank_score=Score(2.5)).ordering_score == pytest.approx(2.5)
+    assert _evidence().ordering_score == pytest.approx(0.031)
+
+
+def test_partly_reranked_outcome_stays_sortable() -> None:
+    # Реранкер отрабатывает не по всем кандидатам: список, где часть уже
+    # переранжирована, а часть ещё нет, обязан сортироваться без ошибки типов.
+    mixed = [_evidence(), _evidence(rerank_score=Score(2.5)), _evidence()]
+
+    ordered = sorted(mixed, key=lambda evidence: evidence.ordering_score, reverse=True)
+
+    assert ordered[0].rerank_score == Score(2.5)
 
 
 def test_evidence_carries_the_quality_of_its_chunk() -> None:
