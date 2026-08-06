@@ -86,8 +86,10 @@ runtime-evaluated-decorators = ["faststream.asgi.get", "faststream.asgi.post"]
 [tool.ruff.lint.per-file-ignores]
 # INP001: тесты импортируются в режиме importlib, файлы __init__.py им не нужны
 # PLR0913: фабрика описывает объект всеми его полями — это её работа
+# S608: запросы собираются из констант модуля, а векторный литерал нельзя
+#       передать связанным параметром — он требует приведения типа в тексте
 "tests/**/*.py" = ["S101", "PLR2004", "D100", "D101", "D102", "D103", "ANN201", "SLF001",
-                   "INP001", "PLR0913"]
+                   "INP001", "PLR0913", "S608"]
 "migrations/**/*.py" = ["INP001", "D", "ERA001"]
 "scripts/**/*.py" = ["INP001", "T201"]
 "ai_worker/bootstrap/**/*.py" = ["PLR0913"]   # composition root: много параметров — норма
