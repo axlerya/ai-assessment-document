@@ -82,7 +82,9 @@ def test_recoverable_database_failures_are_transient(sqlstate: str) -> None:
 
 
 def test_lost_connection_is_transient() -> None:
-    translated = translate(InterfaceError("connection was closed", {}, None))
+    translated = translate(
+        InterfaceError("connection was closed", {}, OSError("closed"))
+    )
 
     assert isinstance(translated, TransientError)
 

@@ -67,6 +67,18 @@ def test_error_keeps_message_and_context() -> None:
     assert error.context == {"attempt": 2}
 
 
+def test_error_renders_itself_for_the_log() -> None:
+    # Это представление уезжает в заголовки DLQ: без кода и данных копию
+    # сообщения в очереди разбора нечем объяснить.
+    error = errors.DuplicateRecord("уже есть", context={"event_id": "abc"})
+
+    assert error.to_dict() == {
+        "code": "duplicate_record",
+        "message": "уже есть",
+        "context": {"event_id": "abc"},
+    }
+
+
 def test_retry_hint_lives_only_on_transient_errors() -> None:
     # Подсказка о задержке имеет смысл ровно там, где повтор разрешён.
     assert errors.StorageUnavailable("x").retry_after_s is not None
