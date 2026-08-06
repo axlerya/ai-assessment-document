@@ -11,8 +11,9 @@ dependencies = [
     "uvicorn>=0.42,<0.43",
 ]
 
-[project.scripts]
-ai-worker = "ai_worker.bootstrap.entrypoint:run"
+# [project.scripts] появится вместе с точкой входа на этапе композиционного
+# корня: объявлять команду, за которой нет модуля, — обещание, которое падает
+# при первом же запуске образа.
 
 [build-system]
 requires = ["hatchling>=1.27"]
@@ -217,7 +218,9 @@ filterwarnings = [
 source = ["ai_worker"]
 branch = true
 parallel = true
-concurrency = ["thread", "greenlet", "multiprocessing"]
+# greenlet добавится вместе с SQLAlchemy: объявленный заранее режим ломает
+# запуск coverage — модуля ещё нет в окружении.
+concurrency = ["thread", "multiprocessing"]
 omit = [
     "*/migrations/*",
     "*/__main__.py",

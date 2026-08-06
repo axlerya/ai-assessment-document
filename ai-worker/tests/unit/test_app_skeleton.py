@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import MutableMapping
 from typing import Any
 
 import pytest
@@ -12,6 +13,10 @@ from ai_worker.bootstrap.app import HTTP_OK, LIVENESS_PATH, create_app
 
 pytestmark = pytest.mark.unit
 
+# Форма сообщения ASGI: словарь, но принимающая сторона объявляет его
+# изменяемым отображением, и точное совпадение типа требует mypy --strict.
+type Message = MutableMapping[str, Any]
+
 # Адрес заведомо недоступен: проба живости не имеет права о нём знать.
 UNREACHABLE_BROKER_URL = "amqp://nobody:nobody@127.0.0.1:1/"
 HTTP_NOT_FOUND = 404
@@ -21,7 +26,7 @@ def _broker() -> RabbitBroker:
     return RabbitBroker(UNREACHABLE_BROKER_URL)
 
 
-async def _call(app: AsgiFastStream, path: str) -> list[dict[str, Any]]:
+async def _call(app: AsgiFastStream, path: str) -> list[Message]:
     """Прогоняет запрос через ASGI-интерфейс приложения.
 
     Args:
@@ -31,12 +36,12 @@ async def _call(app: AsgiFastStream, path: str) -> list[dict[str, Any]]:
     Returns:
         Сообщения, отданные приложением в `send`.
     """
-    sent: list[dict[str, Any]] = []
+    sent: list[Message] = []
 
-    async def receive() -> dict[str, Any]:
+    async def receive() -> Message:
         return {"type": "http.request", "body": b"", "more_body": False}
 
-    async def send(message: dict[str, Any]) -> None:
+    async def send(message: Message) -> None:
         sent.append(message)
 
     scope: dict[str, Any] = {
@@ -55,7 +60,7 @@ async def _call(app: AsgiFastStream, path: str) -> list[dict[str, Any]]:
     return sent
 
 
-def _status_of(sent: list[dict[str, Any]]) -> int:
+def _status_of(sent: list[Message]) -> int:
     start = next(
         message for message in sent if message["type"] == "http.response.start"
     )
