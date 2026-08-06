@@ -9,6 +9,8 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# Каталог по умолчанию — document-worker; джобы второго сервиса переопределяют
+# его у себя. Так добавление сервиса не трогает уже настроенные проверки.
 defaults:
   run:
     working-directory: document-worker
@@ -115,3 +117,80 @@ jobs:
       - run: uv run pytest -m unit
         env:
           EVAL__FONT_DIR: ${{ github.workspace }}/.fonts
+
+  ai-lint:
+    name: ai-worker — линтер и формат
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ai-worker
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: "ai-worker/uv.lock"
+      - run: uv sync --frozen
+      - name: uv.lock синхронизирован с pyproject.toml
+        run: uv lock --check
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+
+  ai-types:
+    name: ai-worker — типизация
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ai-worker
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: "ai-worker/uv.lock"
+      - run: uv sync --frozen
+      - run: uv run mypy --strict ai_worker tests
+
+  ai-arch:
+    name: ai-worker — границы слоёв и зависимости
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ai-worker
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: "ai-worker/uv.lock"
+      - run: uv sync --frozen
+      - name: Контракты import-linter
+        run: uv run lint-imports --show-timings
+      - name: Неиспользуемые и необъявленные зависимости
+        run: uv run deptry .
+      - name: Известные уязвимости в зависимостях
+        run: uv run pip-audit
+
+  ai-unit:
+    name: ai-worker — unit-тесты (py${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ai-worker
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: ${{ env.UV_VERSION }}
+          python-version: ${{ matrix.python-version }}
+          enable-cache: true
+          cache-dependency-glob: "ai-worker/uv.lock"
+      - run: uv sync --frozen
+      - run: uv run pytest -m unit

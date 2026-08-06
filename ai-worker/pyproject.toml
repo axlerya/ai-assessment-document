@@ -1,0 +1,246 @@
+[project]
+name = "ai-worker"
+version = "0.1.0"
+description = "Индексирование документов, гибридный retrieval и обоснованные черновики"
+readme = "README.md"
+requires-python = ">=3.12,<3.14"
+license = "MIT"
+authors = [{ name = "Александр Рябов", email = "alexander.ryabov.002@gmail.com" }]
+# uvicorn появится вместе с точкой входа: сервер нужен, чтобы приложение
+# запустить, а не чтобы его собрать.
+dependencies = [
+    "faststream[rabbit]>=0.7.3,<0.8",
+]
+
+# [project.scripts] появится вместе с точкой входа на этапе композиционного
+# корня: объявлять команду, за которой нет модуля, — обещание, которое падает
+# при первом же запуске образа.
+
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["ai_worker"]
+
+[tool.uv]
+required-version = ">=0.9.26"
+package = true
+default-groups = ["dev"]
+
+[dependency-groups]
+dev = [
+    { include-group = "test" },
+    { include-group = "lint" },
+    { include-group = "typing" },
+]
+test = [
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
+    "pytest-cov>=7.1.0",
+    "pytest-randomly>=4.1.0",
+    "pytest-timeout>=2.4.0",
+    "coverage[toml]>=7.15.2",
+]
+lint = ["ruff>=0.16.0", "import-linter>=2.13", "deptry>=0.25.1", "pip-audit>=2.10.1"]
+typing = ["mypy>=2.3.0"]
+
+[tool.ruff]
+target-version = "py312"
+# ADR-0009 document-worker: 88 вместо 80 из skill://python. Отклонение принято
+# владельцем проекта и распространяется на оба сервиса — разные ширины строки в
+# одном репозитории стоили бы переформатирования при каждом переходе между ними.
+line-length = 88
+src = [".", "tests"]
+extend-exclude = ["migrations/versions"]
+
+[tool.ruff.lint]
+select = ["ALL"]
+# D203/D213 и COM812/ISC001 конфликтуют между собой и с ruff-format;
+# RUF001-003 — кириллица в строках и комментариях;
+# N818 — доменные ошибки именуются языком домена, суффикс Error несёт DomainError
+ignore = ["D203", "D213", "COM812", "ISC001", "TD002", "TD003", "FIX002",
+          "EM101", "EM102", "TRY003", "ANN401", "RUF001", "RUF002", "RUF003",
+          "CPY001", "N818"]
+flake8-tidy-imports.ban-relative-imports = "all"
+pydocstyle.convention = "google"
+mccabe.max-complexity = 8
+isort.known-first-party = ["ai_worker"]
+isort.required-imports = ["from __future__ import annotations"]
+
+[tool.ruff.lint.flake8-type-checking]
+strict = true
+runtime-evaluated-base-classes = [
+    "pydantic.BaseModel", "pydantic_settings.BaseSettings", "sqlalchemy.orm.DeclarativeBase",
+]
+# fast_depends резолвит аннотации обработчика через get_type_hints() в рантайме,
+# поэтому их импорты нельзя прятать в блок TYPE_CHECKING.
+runtime-evaluated-decorators = ["faststream.asgi.get", "faststream.asgi.post"]
+
+[tool.ruff.lint.per-file-ignores]
+# INP001: тесты импортируются в режиме importlib, файлы __init__.py им не нужны
+"tests/**/*.py" = ["S101", "PLR2004", "D100", "D101", "D102", "D103", "ANN201", "SLF001",
+                   "INP001"]
+"migrations/**/*.py" = ["INP001", "D", "ERA001"]
+"scripts/**/*.py" = ["INP001", "T201"]
+"ai_worker/bootstrap/**/*.py" = ["PLR0913"]   # composition root: много параметров — норма
+
+[tool.ruff.format]
+docstring-code-format = true
+docstring-code-line-length = 72
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+packages = ["ai_worker"]
+namespace_packages = true
+explicit_package_bases = true
+warn_unreachable = true
+disallow_any_generics = true
+extra_checks = true
+show_error_codes = true
+pretty = true
+enable_error_code = ["redundant-expr", "possibly-undefined", "truthy-bool", "truthy-iterable",
+    "ignore-without-code", "unused-awaitable", "explicit-override", "mutable-override",
+    "narrowed-type-not-subtype"]
+
+[[tool.mypy.overrides]]
+module = ["tests.*"]
+disallow_untyped_decorators = false
+
+[tool.importlinter]
+root_package = "ai_worker"
+include_external_packages = true       # без этого forbidden-контракты ничего не проверяют
+exclude_type_checking_imports = false  # обход границы через TYPE_CHECKING — тоже нарушение
+
+[[tool.importlinter.contracts]]
+id = "layers"
+name = "Слои Clean Architecture"
+type = "layers"
+layers = [
+    "ai_worker.bootstrap",
+    "ai_worker.presentation | ai_worker.infrastructure",
+    "ai_worker.application",
+    "ai_worker.domain",
+]
+
+[[tool.importlinter.contracts]]
+id = "domain-purity"
+name = "Domain не зависит от фреймворков и внешних библиотек"
+type = "forbidden"
+source_modules = ["ai_worker.domain"]
+forbidden_modules = [
+    "ai_worker.application", "ai_worker.infrastructure",
+    "ai_worker.presentation", "ai_worker.bootstrap",
+    "pydantic", "pydantic_settings", "pydantic_core", "sqlalchemy", "alembic", "asyncpg",
+    "greenlet", "pgvector", "faststream", "aio_pika", "aiormq", "uvicorn", "httpx",
+    "openai", "torch", "transformers", "tokenizers", "onnxruntime", "numpy", "scipy",
+    "structlog", "orjson", "tenacity", "prometheus_client", "dishka", "dishka_faststream",
+]
+allow_indirect_imports = false
+
+[[tool.importlinter.contracts]]
+id = "application-purity"
+name = "Application зависит только от Domain и собственных портов"
+type = "forbidden"
+source_modules = ["ai_worker.application"]
+forbidden_modules = [
+    "ai_worker.infrastructure", "ai_worker.presentation", "ai_worker.bootstrap",
+    "pydantic", "pydantic_settings", "sqlalchemy", "alembic", "asyncpg", "pgvector",
+    "faststream", "aio_pika", "uvicorn", "httpx", "openai", "torch", "transformers",
+    "tokenizers", "onnxruntime", "numpy", "scipy", "structlog", "orjson", "tenacity",
+    "prometheus_client", "dishka", "dishka_faststream",
+]
+allow_indirect_imports = false
+
+[[tool.importlinter.contracts]]
+id = "no-agpl"
+name = "Запрет AGPL-зависимостей (PyMuPDF)"
+type = "forbidden"
+source_modules = ["ai_worker"]
+forbidden_modules = ["fitz", "pymupdf"]
+allow_indirect_imports = false
+
+[[tool.importlinter.contracts]]
+id = "di-isolation"
+name = "DI-контейнер виден только в bootstrap"
+type = "forbidden"
+source_modules = [
+    "ai_worker.domain", "ai_worker.application", "ai_worker.infrastructure",
+]
+forbidden_modules = ["dishka", "dishka_faststream"]
+
+[[tool.importlinter.contracts]]
+id = "no-orm-in-presentation"
+name = "Presentation не знает про ORM и хранилища"
+type = "forbidden"
+source_modules = ["ai_worker.presentation"]
+forbidden_modules = ["sqlalchemy", "asyncpg", "alembic", "pgvector"]
+
+[[tool.importlinter.contracts]]
+id = "no-foreign-service-imports"
+name = "ai-worker не импортирует пакет document-worker"
+type = "forbidden"
+source_modules = ["ai_worker"]
+forbidden_modules = ["document_worker"]
+allow_indirect_imports = false
+
+[tool.pytest.ini_options]
+minversion = "9.0"
+testpaths = ["tests"]
+addopts = [
+    "-ra",
+    "--strict-markers",
+    "--strict-config",
+    "--import-mode=importlib",
+    "--timeout=180",
+    "--cov=ai_worker",
+    "--cov-report=term-missing:skip-covered",
+    "--cov-report=xml:.reports/coverage.xml",
+]
+asyncio_mode = "auto"
+# Контейнер поднимается один раз на прогон, поэтому фикстуры и тесты обязаны
+# жить в одном цикле событий.
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
+markers = [
+    "unit: чистые тесты без внешних зависимостей",
+    "integration: требуют testcontainers (postgres/rabbitmq)",
+    "e2e: полный сценарий индексации и генерации черновика",
+    "slow: инференс моделей и сборка образа (>5 c)",
+    "eval: оценка качества на корпусе, по умолчанию отключена",
+    "llm: контур реального LLM-провайдера, требует ключа и сети",
+]
+filterwarnings = [
+    "error",
+]
+
+[tool.coverage.run]
+source = ["ai_worker"]
+branch = true
+parallel = true
+# greenlet добавится вместе с SQLAlchemy: объявленный заранее режим ломает
+# запуск coverage — модуля ещё нет в окружении.
+concurrency = ["thread", "multiprocessing"]
+omit = [
+    "*/migrations/*",
+    "*/__main__.py",
+    # Точка входа поднимает сервер и живёт до сигнала: её проверяет запуск
+    # контейнера, а не тест внутри процесса.
+    "*/bootstrap/entrypoint.py",
+]
+
+[tool.coverage.report]
+fail_under = 85
+show_missing = true
+skip_covered = true
+exclude_also = [
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+    "@(abc\\.)?abstractmethod",
+    "class .*\\(Protocol\\):",
+    "^\\s*\\.\\.\\.$",
+]
+
+[tool.deptry]
+known_first_party = ["ai_worker"]

@@ -22,9 +22,9 @@ hooks = [
 repo = "https://github.com/pre-commit/pre-commit-hooks"
 rev = "v6.0.0"
 hooks = [
-  { id = "debug-statements", files = "^document-worker/(document_worker|tests|scripts|eval)/.*\\.py$" },
+  { id = "debug-statements", files = "^(document-worker|ai-worker)/(document_worker|ai_worker|tests|scripts|eval)/.*\\.py$" },
   # conftest, фабрики, стратегии и фейки — общий инвентарь тестов, а не сами тесты.
-  { id = "name-tests-test", args = ["--pytest-test-first"], files = "^document-worker/tests/.*\\.py$", exclude = "(^|/)(conftest|factories|strategies|support)\\.py$|^document-worker/tests/fakes/" },
+  { id = "name-tests-test", args = ["--pytest-test-first"], files = "^(document-worker|ai-worker)/tests/.*\\.py$", exclude = "(^|/)(conftest|factories|strategies|support)\\.py$|^(document-worker|ai-worker)/tests/fakes/" },
   { id = "check-executables-have-shebangs" },
   # Прямой коммит в main обходит ревью целиком: правило есть в AGENTS.md, но
   # до сих пор его исполняла только дисциплина.
@@ -34,8 +34,11 @@ hooks = [
 [[repos]]
 repo = "https://github.com/abravalheri/validate-pyproject"
 rev = "v0.25"
+# Хук читает файл кодировкой локали, а не UTF-8, как требует PEP 680. На
+# Windows это cp1251, в которой байт 0x98 — вторая половина буквы «И» — не
+# определён, и хук падает на любом pyproject.toml с этой буквой.
 hooks = [
-  { id = "validate-pyproject", files = "(^|/)pyproject\\.toml$" },
+  { id = "validate-pyproject", files = "(^|/)pyproject\\.toml$", env = { PYTHONUTF8 = "1" } },
 ]
 
 [[repos]]
@@ -49,19 +52,23 @@ hooks = [
 repo = "https://github.com/astral-sh/ruff-pre-commit"
 rev = "v0.16.0"
 hooks = [
-  { id = "ruff-check", args = ["--fix", "--exit-non-zero-on-fix"], files = "^document-worker/.*\\.py$" },
-  { id = "ruff-format", files = "^document-worker/.*\\.py$" },
+  { id = "ruff-check", args = ["--fix", "--exit-non-zero-on-fix"], files = "^(document-worker|ai-worker)/.*\\.py$" },
+  { id = "ruff-format", files = "^(document-worker|ai-worker)/.*\\.py$" },
 ]
 
 # --------------------------- локальные хуки (все на language = "system") ---------------------------
 [[repos]]
 repo = "local"
 
+# У сервисов свои окружения, свои lock-файлы и свои границы слоёв, поэтому
+# каждая проверка заведена отдельно на каждый сервис. Общий хук запускался бы в
+# одном окружении и молча пропускал второй сервис целиком.
+
 # mypy — на pre-push, а не на pre-commit: тест, написанный до своего модуля,
 # не типизируется по определению, и хук на коммите запрещал бы красный TDD-цикл.
 [[repos.hooks]]
-id = "mypy"
-name = "mypy --strict (pre-push)"
+id = "mypy-document-worker"
+name = "mypy --strict document-worker (pre-push)"
 language = "system"
 entry = "uv run --directory document-worker mypy document_worker tests eval"
 pass_filenames = false
@@ -70,21 +77,49 @@ require_serial = true
 stages = ["pre-push"]
 
 [[repos.hooks]]
-id = "import-linter"
-name = "import-linter: границы слоёв"
+id = "mypy-ai-worker"
+name = "mypy --strict ai-worker (pre-push)"
+language = "system"
+entry = "uv run --directory ai-worker mypy ai_worker tests"
+pass_filenames = false
+always_run = true
+require_serial = true
+stages = ["pre-push"]
+
+[[repos.hooks]]
+id = "import-linter-document-worker"
+name = "import-linter: границы слоёв document-worker"
 language = "system"
 entry = "uv run --directory document-worker lint-imports"
 files = "^document-worker/(document_worker/.*\\.py|pyproject\\.toml)$"
 pass_filenames = false
 require_serial = true
 
+[[repos.hooks]]
+id = "import-linter-ai-worker"
+name = "import-linter: границы слоёв ai-worker"
+language = "system"
+entry = "uv run --directory ai-worker lint-imports"
+files = "^ai-worker/(ai_worker/.*\\.py|pyproject\\.toml)$"
+pass_filenames = false
+require_serial = true
+
 # deptry, как и mypy, проверяет свойство всего проекта: в середине красного
 # цикла зависимость уже объявлена, а импортируется только следующим коммитом.
 [[repos.hooks]]
-id = "deptry"
-name = "deptry: неиспользуемые и необъявленные зависимости (pre-push)"
+id = "deptry-document-worker"
+name = "deptry document-worker: лишние и необъявленные зависимости (pre-push)"
 language = "system"
 entry = "uv run --directory document-worker deptry ."
+pass_filenames = false
+always_run = true
+stages = ["pre-push"]
+
+[[repos.hooks]]
+id = "deptry-ai-worker"
+name = "deptry ai-worker: лишние и необъявленные зависимости (pre-push)"
+language = "system"
+entry = "uv run --directory ai-worker deptry ."
 pass_filenames = false
 always_run = true
 stages = ["pre-push"]
@@ -98,11 +133,19 @@ files = "^document-worker/migrations/versions/.*\\.py$"
 pass_filenames = false
 
 [[repos.hooks]]
-id = "uv-lock-check"
-name = "uv.lock синхронизирован с pyproject.toml"
+id = "uv-lock-check-document-worker"
+name = "uv.lock document-worker синхронизирован с pyproject.toml"
 language = "system"
 entry = "uv lock --check --directory document-worker"
 files = "^document-worker/(pyproject\\.toml|uv\\.lock)$"
+pass_filenames = false
+
+[[repos.hooks]]
+id = "uv-lock-check-ai-worker"
+name = "uv.lock ai-worker синхронизирован с pyproject.toml"
+language = "system"
+entry = "uv lock --check --directory ai-worker"
+files = "^ai-worker/(pyproject\\.toml|uv\\.lock)$"
 pass_filenames = false
 
 [[repos.hooks]]
@@ -113,10 +156,19 @@ entry = "python scripts/check_commit_message.py"
 stages = ["commit-msg"]
 
 [[repos.hooks]]
-id = "pytest-unit"
-name = "pytest unit (pre-push)"
+id = "pytest-unit-document-worker"
+name = "pytest unit document-worker (pre-push)"
 language = "system"
 entry = "uv run --directory document-worker pytest tests/unit -q -p no:randomly --no-cov"
+pass_filenames = false
+always_run = true
+stages = ["pre-push"]
+
+[[repos.hooks]]
+id = "pytest-unit-ai-worker"
+name = "pytest unit ai-worker (pre-push)"
+language = "system"
+entry = "uv run --directory ai-worker pytest tests/unit -q -p no:randomly --no-cov"
 pass_filenames = false
 always_run = true
 stages = ["pre-push"]
