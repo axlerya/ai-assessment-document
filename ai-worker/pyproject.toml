@@ -10,6 +10,10 @@ authors = [{ name = "Александр Рябов", email = "alexander.ryabov.0
 # запустить, а не чтобы его собрать.
 dependencies = [
     "faststream[rabbit]>=0.7.3,<0.8",
+    "sqlalchemy[asyncio]>=2.0.51,<2.1",
+    "asyncpg>=0.31.0,<0.32",
+    "alembic>=1.18.5,<2",
+    "pgvector>=0.4.2,<0.5",
 ]
 
 # [project.scripts] появится вместе с точкой входа на этапе композиционного
@@ -42,9 +46,10 @@ test = [
     "pytest-timeout>=2.4.0",
     "coverage[toml]>=7.15.2",
     "hypothesis>=6.145",
+    "testcontainers[postgres]>=4.15.0",
 ]
 lint = ["ruff>=0.16.0", "import-linter>=2.13", "deptry>=0.25.1", "pip-audit>=2.10.1"]
-typing = ["mypy>=2.3.0"]
+typing = ["mypy>=2.3.0", "asyncpg-stubs>=0.31.3"]
 
 [tool.ruff]
 target-version = "py312"
@@ -221,9 +226,7 @@ filterwarnings = [
 source = ["ai_worker"]
 branch = true
 parallel = true
-# greenlet добавится вместе с SQLAlchemy: объявленный заранее режим ломает
-# запуск coverage — модуля ещё нет в окружении.
-concurrency = ["thread", "multiprocessing"]
+concurrency = ["thread", "greenlet", "multiprocessing"]
 omit = [
     "*/migrations/*",
     "*/__main__.py",
