@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 import pytest
 import pytest_asyncio
 from alembic import command
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import create_async_engine
 
 from tests.conftest import (
     alembic_config,
@@ -61,14 +61,6 @@ async def connection(engine: AsyncEngine) -> AsyncIterator[AsyncConnection]:
             yield opened
         finally:
             await transaction.rollback()
-
-
-@pytest_asyncio.fixture(loop_scope="session")
-async def session_factory(
-    connection: AsyncConnection,
-) -> AsyncIterator[async_sessionmaker[object]]:
-    """Фабрика сессий поверх откатываемой транзакции теста."""
-    yield async_sessionmaker(bind=connection, expire_on_commit=False)  # type: ignore[arg-type]
 
 
 @pytest.fixture

@@ -39,8 +39,8 @@ def _index_row(**overrides: Any) -> dict[str, Any]:
         "chunks_embedded": 0,
         "chunks_failed": 0,
         "source_event_id": uuid.uuid4(),
-        "started_at": None,
-        "finished_at": None,
+        "started_at": False,
+        "finished_at": False,
         "failure_code": None,
     }
     return row | overrides
@@ -55,8 +55,9 @@ async def _insert_index(connection: AsyncConnection, **overrides: Any) -> None:
             " started_at, finished_at, failure_code)"
             " VALUES (:id, :document_id, :embedding_version, :chunking_version,"
             " :pipeline_version, :model_name, :status, :source_status, :chunks_total,"
-            " :chunks_embedded, :chunks_failed, :source_event_id, :started_at,"
-            " :finished_at, :failure_code)"
+            " :chunks_embedded, :chunks_failed, :source_event_id,"
+            " CASE WHEN :started_at THEN now() END,"
+            " CASE WHEN :finished_at THEN now() END, :failure_code)"
         ),
         _index_row(**overrides),
     )
@@ -295,8 +296,8 @@ async def test_indexed_document_without_embedded_chunks_is_rejected(
             chunks_total=5,
             chunks_embedded=0,
             chunks_failed=5,
-            started_at=text("now()"),
-            finished_at=text("now()"),
+            started_at=True,
+            finished_at=True,
         )
 
 
@@ -739,7 +740,7 @@ async def _insert_outbox(connection: AsyncConnection, **overrides: Any) -> None:
             "INSERT INTO ai_outbox_events (event_id, aggregate_id, event_type,"
             " routing_key, payload, correlation_id)"
             " VALUES (:event_id, :aggregate_id, :event_type, :routing_key,"
-            " :payload::jsonb, :correlation_id)"
+            " CAST(:payload AS jsonb), :correlation_id)"
         ),
         row,
     )
@@ -791,8 +792,7 @@ async def _insert_message(connection: AsyncConnection, **overrides: Any) -> None
         "message_type": "document.processed",
         "status": "in_progress",
         "lease_owner": "worker-1",
-        "lease_expires_at": None,
-        "completed_at": None,
+        "completed_at": False,
     }
     row |= overrides
     await connection.execute(
@@ -800,7 +800,7 @@ async def _insert_message(connection: AsyncConnection, **overrides: Any) -> None
             "INSERT INTO ai_processed_messages (event_id, subject_id, message_type,"
             " status, lease_owner, lease_expires_at, completed_at)"
             " VALUES (:event_id, :subject_id, :message_type, :status, :lease_owner,"
-            " COALESCE(:lease_expires_at, now() + interval '1 hour'), :completed_at)"
+            " now() + interval '1 hour', CASE WHEN :completed_at THEN now() END)"
         ),
         row,
     )
@@ -832,7 +832,7 @@ async def test_completed_message_keeps_no_lease(connection: AsyncConnection) -> 
             connection,
             status="completed",
             lease_owner="worker-1",
-            completed_at=text("now()"),
+            completed_at=True,
         )
 
 

@@ -14,7 +14,10 @@ from alembic.script import ScriptDirectory
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
-from ai_worker.infrastructure.persistence.metadata import TARGET_METADATA
+from ai_worker.infrastructure.persistence.metadata import (
+    TARGET_METADATA,
+    include_object,
+)
 from tests.conftest import (
     alembic_config,
     create_database,
@@ -121,7 +124,11 @@ async def test_schema_matches_models(empty_database: str) -> None:
 def _diff_against_models(connection: object) -> list[object]:
     context = MigrationContext.configure(
         connection,  # type: ignore[arg-type]
-        opts={"target_metadata": TARGET_METADATA, "compare_type": True},
+        opts={
+            "target_metadata": TARGET_METADATA,
+            "compare_type": True,
+            "include_object": include_object,
+        },
     )
     return list(compare_metadata(context, TARGET_METADATA))
 

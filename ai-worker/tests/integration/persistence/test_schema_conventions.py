@@ -36,6 +36,9 @@ async def _constraint_names(connection: AsyncConnection) -> list[str]:
             " JOIN pg_class t ON t.oid = c.conrelid"
             " JOIN pg_namespace n ON n.oid = t.relnamespace"
             " WHERE n.nspname = 'public' AND t.relname LIKE 'ai\\_%'"
+            # PostgreSQL 18 показывает NOT NULL отдельным ограничением с
+            # именем, которое придумывает сам: конвенция к нему неприменима.
+            " AND c.contype <> 'n'"
         )
     )
     return [row[0] for row in rows]
