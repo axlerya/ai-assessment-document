@@ -37,6 +37,7 @@ dev = [
     { include-group = "test" },
     { include-group = "lint" },
     { include-group = "typing" },
+    { include-group = "tooling" },
 ]
 test = [
     "pytest>=9.1.1",
@@ -49,6 +50,9 @@ test = [
     "testcontainers[postgres]>=4.15.0",
 ]
 lint = ["ruff>=0.16.0", "import-linter>=2.13", "deptry>=0.25.1", "pip-audit>=2.10.1"]
+# alembic.ini просит отметки времени в UTC, а на Windows базы часовых поясов
+# в системе нет: без tzdata `alembic revision` падает при генерации.
+tooling = ["tzdata>=2026.1"]
 typing = ["mypy>=2.3.0", "asyncpg-stubs>=0.31.3"]
 
 [tool.ruff]
@@ -78,6 +82,9 @@ isort.required-imports = ["from __future__ import annotations"]
 strict = true
 runtime-evaluated-base-classes = [
     "pydantic.BaseModel", "pydantic_settings.BaseSettings", "sqlalchemy.orm.DeclarativeBase",
+    # Mapped[...] резолвится SQLAlchemy в рантайме, а наследование от
+    # DeclarativeBase ruff по цепочке не отслеживает — нужен именно наш Base.
+    "ai_worker.infrastructure.persistence.base.Base",
 ]
 # fast_depends резолвит аннотации обработчика через get_type_hints() в рантайме,
 # поэтому их импорты нельзя прятать в блок TYPE_CHECKING.
@@ -116,6 +123,11 @@ enable_error_code = ["redundant-expr", "possibly-undefined", "truthy-bool", "tru
 [[tool.mypy.overrides]]
 module = ["tests.*"]
 disallow_untyped_decorators = false
+
+# У pgvector нет маркера py.typed, стабов в typeshed тоже нет.
+[[tool.mypy.overrides]]
+module = ["pgvector.*"]
+ignore_missing_imports = true
 
 [tool.importlinter]
 root_package = "ai_worker"
@@ -251,3 +263,9 @@ exclude_also = [
 
 [tool.deptry]
 known_first_party = ["ai_worker"]
+
+[tool.deptry.per_rule_ignores]
+# asyncpg — драйвер: его выбирает SQLAlchemy по схеме DSN, прямого импорта
+# в коде нет и быть не должно. tzdata нужна только генератору миграций на
+# Windows — её тоже никто не импортирует.
+DEP002 = ["asyncpg", "tzdata"]
