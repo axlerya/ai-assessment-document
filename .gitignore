@@ -24,3 +24,6 @@ products_catalog_ru.csv
 task.md
 plans/
 .models/
+
+# Шрифты корпуса оценки качаются по закреплённому sha256 и в репозиторий не кладутся.
+.fonts/
