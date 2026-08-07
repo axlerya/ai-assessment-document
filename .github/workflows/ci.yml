@@ -194,3 +194,27 @@ jobs:
           cache-dependency-glob: "ai-worker/uv.lock"
       - run: uv sync --frozen
       - run: uv run pytest -m unit
+
+  ai-integration:
+    name: ai-worker — интеграционные тесты
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ai-worker
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: "ai-worker/uv.lock"
+      - run: uv sync --frozen
+      # Схема соседнего сервиса накатывается его же миграциями (ADR-0001), а
+      # для этого нужно его окружение. Без него тесты молча пропускались бы —
+      # то есть выглядели бы пройденными.
+      - name: Окружение document-worker для его миграций
+        run: uv sync --frozen --directory ../document-worker
+      - name: Схема, репозитории и сценарии на живом PostgreSQL
+        # Порог покрытия проверяется по объединённым данным всех уровней,
+        # а не по одному интеграционному прогону.
+        run: uv run pytest -m "integration and not slow" --cov-fail-under=0
