@@ -109,7 +109,7 @@ def test_every_section_is_frozen() -> None:
     settings = _settings()
 
     with pytest.raises(ValidationError):
-        settings.embedding.dimensions = 512  # type: ignore[misc]
+        settings.embedding.dimensions = 512
 
 
 def test_processing_config_is_assembled_for_the_application_layer() -> None:

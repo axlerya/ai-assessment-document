@@ -8,8 +8,6 @@
 from __future__ import annotations
 
 import inspect
-import typing
-from typing import Protocol, get_type_hints
 
 import pytest
 
@@ -19,6 +17,7 @@ from ai_worker.application.ports import (
     llm,
     publishing,
     reading,
+    repositories,
     rerank,
     search,
     system,
@@ -34,6 +33,7 @@ PORT_MODULES = (
     reading,
     search,
     publishing,
+    repositories,
     unit_of_work,
     system,
     health,
@@ -60,6 +60,11 @@ VENDOR_WORDS = (
 )
 
 
+def _is_protocol(candidate: type) -> bool:
+    """Отличает объявленный протокол от обычного класса рядом с ним."""
+    return bool(getattr(candidate, "_is_protocol", False))
+
+
 def _protocols() -> list[type]:
     found: list[type] = []
     for module in PORT_MODULES:
@@ -67,9 +72,8 @@ def _protocols() -> list[type]:
             value
             for value in vars(module).values()
             if isinstance(value, type)
-            and issubclass(value, Protocol)  # type: ignore[arg-type]
-            and value is not Protocol
             and value.__module__ == module.__name__
+            and _is_protocol(value)
         )
     return found
 
@@ -93,14 +97,17 @@ def test_every_port_is_runtime_checkable() -> None:
 
 
 def test_every_port_method_is_annotated() -> None:
-    unannotated: list[str] = []
-    for port in _protocols():
-        for name, member in vars(port).items():
-            if name.startswith("_") or not callable(member):
-                continue
-            hints = get_type_hints(member, include_extras=False)
-            if "return" not in hints:
-                unannotated.append(f"{port.__name__}.{name}")
+    # Аннотации читаются как строки, а не разрешаются: имена типов живут в
+    # блоке TYPE_CHECKING, и попытка их разрешить требовала бы тащить
+    # инфраструктуру в рантайм ради проверки.
+    unannotated = [
+        f"{port.__name__}.{name}"
+        for port in _protocols()
+        for name, member in vars(port).items()
+        if not name.startswith("_")
+        and callable(member)
+        and "return" not in getattr(member, "__annotations__", {})
+    ]
 
     assert not unannotated, f"методы портов без аннотации результата: {unannotated}"
 
@@ -147,7 +154,12 @@ def test_ports_are_only_declared_in_their_own_package() -> None:
         assert module.__name__.startswith("ai_worker.application.ports")
 
 
-def test_typing_helpers_are_not_mistaken_for_ports() -> None:
-    # Страховка от вырождения теста: если бы `_protocols` собирал что попало,
-    # проверки выше проходили бы на пустом множестве.
-    assert typing.Protocol not in _protocols()
+def test_dataclasses_beside_ports_are_not_mistaken_for_them() -> None:
+    # Страховка от вырождения: рядом с портами лежат обычные значения вроде
+    # `HealthStatus`, и если бы `_protocols` собирал их тоже, проверки выше
+    # ничего не значили бы.
+    names = {port.__name__ for port in _protocols()}
+
+    assert "HealthStatus" not in names
+    assert "LlmCompletion" not in names
+    assert "SearchHit" not in names
