@@ -15,6 +15,7 @@ from ai_worker.infrastructure.embedding.model_registry import (
     OFFLINE_ENVIRONMENT,
     REQUIRED_FILES,
     ModelFile,
+    download_missing,
     missing_files,
     model_dir_from_env,
     verify,
@@ -120,6 +121,46 @@ def test_missing_file_is_listed_for_download(tmp_path: Path) -> None:
     (tmp_path / "weights.bin").unlink()
 
     assert missing_files(tmp_path, files=[declared]) == (declared,)
+
+
+def _served(tmp_path: Path, name: str, content: bytes, *, sha256: str) -> ModelFile:
+    """Файл, лежащий рядом и отдаваемый как источник."""
+    source = tmp_path / "source" / name
+    source.parent.mkdir(parents=True, exist_ok=True)
+    source.write_bytes(content)
+    return ModelFile(name=name, file_name=name, url=source.as_uri(), sha256=sha256)
+
+
+def test_download_puts_the_missing_file_in_place(tmp_path: Path) -> None:
+    content = "веса".encode()
+    declared = _served(
+        tmp_path, "weights.bin", content, sha256=hashlib.sha256(content).hexdigest()
+    )
+    target = tmp_path / "models"
+
+    assert download_missing(target, files=[declared]) == ("weights.bin",)
+    assert (target / "weights.bin").read_bytes() == content
+    verify(target, files=[declared])
+
+
+def test_download_skips_what_is_already_in_place(tmp_path: Path) -> None:
+    # Сборка образа и подготовка тестов вызывают её повторно: качать два
+    # гигабайта заново каждый раз незачем.
+    declared = _declare(tmp_path, "weights.bin", "веса".encode())
+
+    assert download_missing(tmp_path, files=[declared]) == ()
+
+
+def test_download_of_a_file_that_does_not_match_is_rejected(tmp_path: Path) -> None:
+    # Недокачанный или подменённый файл не должен занять место настоящего:
+    # проверка сумм на старте прошла бы, а модель считала бы другое.
+    declared = _served(tmp_path, "weights.bin", "веса".encode(), sha256="0" * 64)
+    target = tmp_path / "models"
+
+    with pytest.raises(EmbeddingModelMissing, match="скачанный"):
+        download_missing(target, files=[declared])
+
+    assert list(target.iterdir()) == []
 
 
 def test_runtime_environment_forbids_going_online() -> None:
