@@ -95,6 +95,22 @@ class InvariantRejectedByStorage(PermanentError):
     code: ClassVar[str] = "invariant_rejected_by_storage"
 
 
+class SourceDocumentNotFound(TransientError):
+    """Строки документа ещё нет.
+
+    Сообщение обогнало коммит соседнего сервиса — повтор через несколько секунд
+    её увидит. Неисправимой такая ошибка стала бы только по таймауту повторов.
+    """
+
+    code: ClassVar[str] = "source_document_not_found"
+
+
+class ConcurrentIndexing(TransientError):
+    """Документ занят живым лизом другого воркера."""
+
+    code: ClassVar[str] = "concurrent_indexing"
+
+
 class EmbeddingModelMissing(PermanentError):
     """Файлов модели нет или они подменены.
 

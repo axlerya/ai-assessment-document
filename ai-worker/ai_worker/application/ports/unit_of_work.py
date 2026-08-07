@@ -21,12 +21,38 @@ if TYPE_CHECKING:
 class UnitOfWork(Protocol):
     """Транзакция вместе с репозиториями, которые в ней работают."""
 
-    index: DocumentIndexRepository
-    embeddings: EmbeddingRepository
-    drafts: DraftRepository
-    retrieval: RetrievalHistoryRepository
-    messages: ProcessedMessageRepository
-    outbox: OutboxRepository
+    # Репозитории объявлены свойствами только для чтения, а не полями:
+    # изменяемый атрибут протокола инвариантен по типу, и реализация с
+    # конкретным репозиторием ему не соответствовала бы никогда.
+    @property
+    def index(self) -> DocumentIndexRepository:
+        """Прогоны индексации."""
+        ...
+
+    @property
+    def embeddings(self) -> EmbeddingRepository:
+        """Эмбеддинги чанков."""
+        ...
+
+    @property
+    def drafts(self) -> DraftRepository:
+        """Черновики со всем содержимым."""
+        ...
+
+    @property
+    def retrieval(self) -> RetrievalHistoryRepository:
+        """История поиска."""
+        ...
+
+    @property
+    def messages(self) -> ProcessedMessageRepository:
+        """Барьер идемпотентности доставки."""
+        ...
+
+    @property
+    def outbox(self) -> OutboxRepository:
+        """Накопитель исходящих событий."""
+        ...
 
     async def __aenter__(self) -> Self:
         """Открывает транзакцию."""
