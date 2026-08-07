@@ -76,6 +76,13 @@ def test_sparse_limit_cannot_exceed_the_index_limit() -> None:
         _settings(embedding={"sparse_top_k": SPARSE_TOP_K + 1})
 
 
+def test_embedding_parameters_cannot_drift_from_their_version() -> None:
+    # Правка через `.env` без инкремента версии сложила бы векторы разной
+    # геометрии в один namespace — незаметно и необратимо (ADR-0004).
+    with pytest.raises(ValidationError, match="не соответствуют"):
+        _settings(embedding={"normalize": False})
+
+
 def test_rerank_pool_cannot_be_smaller_than_the_context() -> None:
     # В контекст попадает только переранжированное: просить больше фрагментов,
     # чем прошло реранкинг, значит просить несуществующее.
@@ -117,6 +124,6 @@ def test_processing_config_is_assembled_for_the_application_layer() -> None:
     # уже прошедшую проверки.
     config = _settings().processing_config()
 
-    assert config.embedding.version.major >= 1
+    assert config.embedding.policy.version.major >= 1
     assert config.retrieval.rrf_k > 0
     assert config.context.token_budget > 0

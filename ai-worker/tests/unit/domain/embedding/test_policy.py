@@ -52,29 +52,47 @@ def test_unknown_version_is_rejected() -> None:
         unknown.ensure_registered()
 
 
-@pytest.mark.parametrize(
-    "field",
-    ["model_name", "normalize", "max_input_tokens", "sparse_top_k", "query_prefix"],
-)
-def test_every_parameter_that_changes_the_vector_changes_the_hash(field: str) -> None:
+_CHANGED_PARAMETERS = [
+    pytest.param(
+        dataclasses.replace(
+            DEFAULT_EMBEDDING_POLICY, version=EmbeddingVersion(2, 0, 0)
+        ),
+        id="version",
+    ),
+    pytest.param(
+        dataclasses.replace(DEFAULT_EMBEDDING_POLICY, model_name="BAAI/bge-m3-other"),
+        id="model_name",
+    ),
+    pytest.param(
+        dataclasses.replace(
+            DEFAULT_EMBEDDING_POLICY, normalize=not DEFAULT_EMBEDDING_POLICY.normalize
+        ),
+        id="normalize",
+    ),
+    pytest.param(
+        dataclasses.replace(DEFAULT_EMBEDDING_POLICY, max_input_tokens=512),
+        id="max_input_tokens",
+    ),
+    pytest.param(
+        dataclasses.replace(DEFAULT_EMBEDDING_POLICY, sparse_top_k=500),
+        id="sparse_top_k",
+    ),
+    pytest.param(
+        dataclasses.replace(DEFAULT_EMBEDDING_POLICY, query_prefix="запрос: "),
+        id="query_prefix",
+    ),
+    pytest.param(
+        dataclasses.replace(DEFAULT_EMBEDDING_POLICY, passage_prefix="документ: "),
+        id="passage_prefix",
+    ),
+]
+
+
+@pytest.mark.parametrize("changed", _CHANGED_PARAMETERS)
+def test_every_parameter_that_changes_the_vector_changes_the_hash(
+    changed: EmbeddingPolicy,
+) -> None:
     # Параметр вне хэша — это тихая смена геометрии под старой версией.
-    other = {
-        "model_name": "BAAI/bge-m3-other",
-        "normalize": not DEFAULT_EMBEDDING_POLICY.normalize,
-        "max_input_tokens": 512,
-        "sparse_top_k": 500,
-        "query_prefix": "запрос: ",
-    }[field]
-    changed = dataclasses.replace(DEFAULT_EMBEDDING_POLICY, **{field: other})
-
-    assert changed.params_hash() != DEFAULT_EMBEDDING_POLICY.params_hash()
-
-
-def test_version_is_part_of_the_hash() -> None:
-    changed = dataclasses.replace(
-        DEFAULT_EMBEDDING_POLICY, version=EmbeddingVersion(2, 0, 0)
-    )
-
     assert changed.params_hash() != DEFAULT_EMBEDDING_POLICY.params_hash()
 
 

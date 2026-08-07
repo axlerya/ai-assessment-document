@@ -11,28 +11,22 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from ai_worker.domain.value_objects.embedding_identity import EmbeddingIdentity
-    from ai_worker.domain.value_objects.versioning import (
-        EmbeddingVersion,
-        PromptVersion,
-    )
+    from ai_worker.domain.embedding.policy import EmbeddingPolicy
+    from ai_worker.domain.value_objects.versioning import PromptVersion
 
 
 @dataclass(frozen=True, slots=True)
 class EmbeddingConfig:
-    """Чем и как строятся представления."""
+    """Чем строятся представления и в каких пределах.
 
-    identity: EmbeddingIdentity
-    dimensions: int
-    sparse_top_k: int
+    Всё, что влияет на сам вектор, живёт в политике: держать те же параметры
+    ещё и здесь значило бы завести второй источник истины для геометрии.
+    Остаются пределы прогона — они на вектор не влияют.
+    """
+
+    policy: EmbeddingPolicy
     batch_size: int
-    max_input_tokens: int
     timeout_s: float
-
-    @property
-    def version(self) -> EmbeddingVersion:
-        """Версия эмбеддингов: она открывает namespace индекса."""
-        return self.identity.version
 
 
 @dataclass(frozen=True, slots=True)
