@@ -105,6 +105,9 @@ class SourceChunk:
     text: str
     token_count: int
     chunking_version: ChunkingVersion
+    # Начало чанка в тексте своей страницы. По нему цитата разворачивается
+    # до страницы: page.text[page_offset + quote_start : ...].
+    page_offset: int = 0
     heading_path: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
@@ -123,6 +126,11 @@ class SourceChunk:
             raise InvariantViolation(
                 "число токенов чанка не положительно",
                 context={"token_count": self.token_count},
+            )
+        if self.page_offset < 0:
+            raise InvariantViolation(
+                "смещение чанка на странице отрицательно",
+                context={"page_offset": self.page_offset},
             )
 
     @property

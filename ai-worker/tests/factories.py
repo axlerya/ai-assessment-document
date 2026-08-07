@@ -88,6 +88,7 @@ def make_chunk(
     chunking_version: ChunkingVersion | None = None,
     heading_path: tuple[str, ...] = ("Предмет договора",),
     document_id: DocumentId | None = None,
+    page_offset: int = 0,
 ) -> SourceChunk:
     """Чанк документа в том виде, в каком его отдаёт document-worker."""
     return SourceChunk(
@@ -96,6 +97,7 @@ def make_chunk(
         text=text,
         token_count=token_count,
         chunking_version=chunking_version or ChunkingVersion(1, 0, 0),
+        page_offset=page_offset,
         heading_path=heading_path,
     )
 
