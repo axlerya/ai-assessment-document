@@ -102,6 +102,12 @@ class InvalidVector(InvalidValueObject):
     code: ClassVar[str] = "invalid_vector"
 
 
+class InvalidEmbeddingPolicy(InvalidValueObject):
+    """Параметры эмбеддингов непригодны или разошлись со своей версией."""
+
+    code: ClassVar[str] = "invalid_embedding_policy"
+
+
 class InvalidScore(InvalidValueObject):
     """Оценка не число либо вне своего диапазона."""
 

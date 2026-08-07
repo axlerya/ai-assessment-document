@@ -53,6 +53,25 @@ class DenseVector:
                     context={"position": position, "value": repr(value)},
                 )
 
+    def normalized(self) -> DenseVector:
+        """Тот же вектор единичной длины.
+
+        Косинусная близость сравнивает направления: без приведения к единичной
+        длине выдача ранжируется по длине вектора, а не по смыслу.
+
+        Raises:
+            InvalidVector: Длина нулевая — направления у такого вектора нет, а
+                деление дало бы NaN, с которым любое расстояние тоже NaN и
+                поиск молча возвращает произвольный порядок.
+        """
+        length = math.hypot(*self.values)
+        if length == 0.0:
+            raise InvalidVector(
+                "плотный вектор нулевой длины нельзя нормировать",
+                context={},
+            )
+        return DenseVector(tuple(value / length for value in self.values))
+
 
 @dataclass(frozen=True, slots=True)
 class SparseVector:
