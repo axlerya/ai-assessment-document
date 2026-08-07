@@ -30,7 +30,7 @@ if TYPE_CHECKING:
 
     from sqlalchemy.ext.asyncio import AsyncConnection
 
-DOCUMENT_WORKER = Path(__file__).resolve().parents[3] / "document-worker"
+DOCUMENT_WORKER = Path(__file__).resolve().parents[4] / "document-worker"
 
 
 def _apply_foreign_schema(dsn: str) -> None:

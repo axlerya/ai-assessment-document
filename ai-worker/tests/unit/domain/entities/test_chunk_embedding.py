@@ -182,3 +182,10 @@ def test_embedding_is_not_equal_to_anything_else() -> None:
     )
 
     assert embedding != "эмбеддинг"
+
+
+def test_chunk_with_a_negative_page_offset_is_refused() -> None:
+    # Смещение разворачивает цитату до страницы: отрицательное сдвинуло бы
+    # адресацию всех цитат этого чанка.
+    with pytest.raises(InvariantViolation):
+        make_chunk(page_offset=-1)

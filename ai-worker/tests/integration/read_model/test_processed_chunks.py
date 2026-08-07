@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+import re
 import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -44,15 +45,20 @@ async def _insert_document(
         text(
             "INSERT INTO documents (id, bucket, object_key, declared_mime_type,"
             " declared_size_bytes, status, pipeline_version, page_count, checksum,"
-            " size_bytes, processing_finished_at)"
+            " size_bytes, correlation_id, failure_code, failure_stage,"
+            " processing_finished_at)"
             " VALUES (:id, 'documents', :key, 'application/pdf', 1024, :status,"
-            " '1.0.0', 3, :checksum, 1024, now())"
+            " '1.0.0', 3, :checksum, 1024, :correlation_id, :failure_code,"
+            " :failure_stage, now())"
         ),
         {
             "id": document_id,
             "key": f"documents/{document_id}/source.pdf",
             "status": status,
             "checksum": "a" * 64,
+            "correlation_id": str(uuid.uuid4()),
+            "failure_code": None if status != "failed" else "corrupted_document",
+            "failure_stage": None if status != "failed" else "text_extraction",
         },
     )
 
@@ -91,6 +97,7 @@ async def _insert_chunk(
     chunking_version: str = "1.0.0",
     method: str = "text_layer",
     confidence: float | None = None,
+    start: int = 0,
     end: int | None = None,
 ) -> uuid.UUID:
     chunk_id = uuid.uuid4()
@@ -102,7 +109,7 @@ async def _insert_chunk(
             " token_count, extraction_method, avg_ocr_confidence,"
             " illegible_span_count, heading_path, content_hash)"
             " VALUES (:id, :document_id, :page_id, :page_number, :version, :index,"
-            " 0, :end, :text, 42, :method, :confidence, 0,"
+            " :start, :end, :text, 42, :method, :confidence, 0,"
             " CAST(:heading AS jsonb), :hash)"
         ),
         {
@@ -112,8 +119,9 @@ async def _insert_chunk(
             "page_number": page_number,
             "version": chunking_version,
             "index": chunk_index,
+            "start": start,
             "end": stop,
-            "text": CHUNK_TEXT[:stop],
+            "text": CHUNK_TEXT[start:stop],
             "method": method,
             "confidence": confidence,
             "heading": '["Предмет договора"]',
@@ -261,7 +269,8 @@ async def test_chunks_arrive_in_page_and_index_order(
         page_id=first_page,
         page_number=1,
         chunk_index=1,
-        end=20,
+        start=10,
+        end=30,
     )
     await _insert_chunk(
         foreign_connection,
@@ -273,13 +282,13 @@ async def test_chunks_arrive_in_page_and_index_order(
     )
 
     seen = [
-        (chunk.ref.page_number, chunk.span_start)
+        (chunk.ref.page_number, chunk.page_offset)
         async for chunk in _reader(foreign_connection).chunks(
             DocumentId(document_id), chunking_version=ChunkingVersion(1, 0, 0)
         )
     ]
 
-    assert seen == [(1, 0), (1, 0), (2, 0)]
+    assert seen == [(1, 0), (1, 10), (2, 0)]
 
 
 async def test_chunk_carries_everything_needed_to_index_and_cite(
@@ -409,10 +418,19 @@ def test_no_module_outside_the_read_model_touches_document_tables() -> None:
 
 
 def _mentions_table(source: str, table: str) -> bool:
-    """Ищет имя чужой таблицы в строковых литералах модуля."""
+    """Ищет обращение к чужой таблице в строковых литералах модуля.
+
+    Ищется именно обращение, а не имя: слово `documents` встречается и как
+    раздел черновика, и в словаре CHECK-ограничения. Признак доступа — SQL
+    вокруг него.
+    """
+    access = re.compile(
+        r"\b(from|join|into|update|delete\s+from|references)\s+" + table + r"\b",
+        re.IGNORECASE,
+    )
     return any(
         isinstance(node, ast.Constant)
         and isinstance(node.value, str)
-        and table in node.value
+        and access.search(node.value) is not None
         for node in ast.walk(ast.parse(source))
     )
