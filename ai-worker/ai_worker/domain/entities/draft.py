@@ -25,6 +25,7 @@ if TYPE_CHECKING:
     from ai_worker.domain.value_objects.enums import DraftType, RejectCode
     from ai_worker.domain.value_objects.identifiers import (
         ClaimId,
+        CorrelationId,
         DocumentId,
         RequestId,
     )
@@ -194,6 +195,7 @@ class Draft:
     embedding_version: EmbeddingVersion
     chunking_version: ChunkingVersion
     evidence_total: int
+    correlation_id: CorrelationId | None = None
 
     def __post_init__(self) -> None:
         """Проверяет запрос и порядковые номера утверждений.
@@ -214,6 +216,20 @@ class Draft:
                 "порядковые номера утверждений повторяются",
                 context={"indexes": indexes},
             )
+        # Черновик отвечает по одному документу, и цитата на чужой чанк — это
+        # выдумка со ссылкой на настоящий документ: самый правдоподобный вид
+        # неподтверждённого утверждения.
+        foreign = [
+            str(citation.ref.chunk_id)
+            for claim in self.claims
+            for citation in claim.citations
+            if citation.ref.document_id != self.document_id
+        ]
+        if foreign:
+            raise InvariantViolation(
+                "цитата указывает на чанк другого документа",
+                context={"document_id": str(self.document_id), "chunks": foreign},
+            )
 
     @classmethod
     def assembled(  # noqa: PLR0913 — черновик описывается всеми этими значениями
@@ -230,6 +246,7 @@ class Draft:
         embedding_version: EmbeddingVersion,
         chunking_version: ChunkingVersion,
         evidence_total: int,
+        correlation_id: CorrelationId | None = None,
     ) -> Self:
         """Собирает черновик и выводит его исход из состава утверждений.
 
@@ -257,6 +274,7 @@ class Draft:
             embedding_version=embedding_version,
             chunking_version=chunking_version,
             evidence_total=evidence_total,
+            correlation_id=correlation_id,
         )
 
     @property

@@ -10,7 +10,12 @@ from ai_worker.domain.entities.document_index import DocumentIndex
 from ai_worker.domain.errors import InvalidStatusTransition, InvariantViolation
 from ai_worker.domain.value_objects.embedding_identity import EmbeddingIdentity
 from ai_worker.domain.value_objects.enums import IndexStatus, SourceStatus
-from ai_worker.domain.value_objects.identifiers import DocumentId, IndexId
+from ai_worker.domain.value_objects.identifiers import (
+    DocumentId,
+    EventId,
+    IndexId,
+)
+from ai_worker.domain.value_objects.source_snapshot import SourceSnapshot
 from ai_worker.domain.value_objects.versioning import (
     ChunkingVersion,
     EmbeddingVersion,
@@ -23,15 +28,19 @@ STARTED = datetime(2026, 8, 7, 12, 0, tzinfo=UTC)
 FINISHED = datetime(2026, 8, 7, 12, 5, tzinfo=UTC)
 EMBEDDING_VERSION = EmbeddingVersion(1, 0, 0)
 EMBEDDING = EmbeddingIdentity(version=EMBEDDING_VERSION, model_name="BAAI/bge-m3")
+SOURCE = SourceSnapshot(
+    pipeline_version=PipelineVersion(1, 0, 0),
+    chunking_version=ChunkingVersion(1, 0, 0),
+    status=SourceStatus.PROCESSED,
+)
 
 
 def _pending() -> DocumentIndex:
     return DocumentIndex.pending(
         document_id=DocumentId.generate(),
         embedding=EMBEDDING,
-        chunking_version=ChunkingVersion(1, 0, 0),
-        pipeline_version=PipelineVersion(1, 0, 0),
-        source_status=SourceStatus.PROCESSED,
+        source=SOURCE,
+        source_event_id=EventId.generate(),
     )
 
 
@@ -45,9 +54,8 @@ def test_key_is_determined_by_document_and_embedding_version() -> None:
     index = DocumentIndex.pending(
         document_id=document_id,
         embedding=EMBEDDING,
-        chunking_version=ChunkingVersion(1, 0, 0),
-        pipeline_version=PipelineVersion(1, 0, 0),
-        source_status=SourceStatus.PROCESSED,
+        source=SOURCE,
+        source_event_id=EventId.generate(),
     )
 
     assert index.id == IndexId.deterministic(

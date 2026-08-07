@@ -14,7 +14,12 @@ from ai_worker.domain.value_objects.enums import (
     DraftType,
     RejectCode,
 )
-from ai_worker.domain.value_objects.identifiers import ClaimId, DraftId, RequestId
+from ai_worker.domain.value_objects.identifiers import (
+    ClaimId,
+    DocumentId,
+    DraftId,
+    RequestId,
+)
 from ai_worker.domain.value_objects.scores import Ratio, Score
 from ai_worker.domain.value_objects.text import QuoteSpan
 from ai_worker.domain.value_objects.versioning import (
@@ -32,6 +37,9 @@ pytestmark = pytest.mark.unit
 PROMPT_VERSION = PromptVersion(1, 0, 0)
 QUOTE = "Договор поставки № 12/АБ"
 QUOTE_SPAN = QuoteSpan(start=0, end=len(QUOTE))
+# Черновик отвечает по одному документу, и все его цитаты указывают на
+# чанки именно этого документа — иначе домен их отвергнет.
+DOCUMENT_ID = DocumentId.generate()
 
 
 def _citation(
@@ -44,7 +52,7 @@ def _citation(
 ) -> Citation:
     return Citation.for_quote(
         claim_id=claim_id or ClaimId.generate(),
-        chunk=chunk or make_chunk(),
+        chunk=chunk or make_chunk(document_id=DOCUMENT_ID),
         span=span or QUOTE_SPAN,
         quote=quote,
         retrieval_score=Score(0.9),
@@ -80,7 +88,7 @@ def _claim(
 def _draft(claims: tuple[Claim, ...]) -> Draft:
     return Draft.assembled(
         request_id=RequestId.generate(),
-        document_id=make_chunk().ref.document_id,
+        document_id=DOCUMENT_ID,
         draft_type=DraftType.CASE_FACT_SUMMARY,
         query="Собери сводку фактов по делу",
         claims=claims,
@@ -265,7 +273,7 @@ def test_draft_key_is_determined_by_request_and_prompt_version() -> None:
 
     draft = Draft.assembled(
         request_id=request_id,
-        document_id=make_chunk().ref.document_id,
+        document_id=DOCUMENT_ID,
         draft_type=DraftType.CASE_FACT_SUMMARY,
         query="Собери сводку фактов по делу",
         claims=(_claim(),),
@@ -291,7 +299,7 @@ def test_empty_query_is_refused() -> None:
     with pytest.raises(InvariantViolation):
         Draft.assembled(
             request_id=RequestId.generate(),
-            document_id=make_chunk().ref.document_id,
+            document_id=DOCUMENT_ID,
             draft_type=DraftType.CASE_FACT_SUMMARY,
             query="  ",
             claims=(_claim(),),
@@ -348,10 +356,9 @@ def test_claim_is_not_equal_to_anything_else() -> None:
 
 def test_drafts_are_the_same_when_their_keys_match() -> None:
     request_id = RequestId.generate()
-    document_id = make_chunk().ref.document_id
     first = Draft.assembled(
         request_id=request_id,
-        document_id=document_id,
+        document_id=DOCUMENT_ID,
         draft_type=DraftType.CASE_FACT_SUMMARY,
         query="Собери сводку фактов по делу",
         claims=(_claim(),),
@@ -364,7 +371,7 @@ def test_drafts_are_the_same_when_their_keys_match() -> None:
     )
     second = Draft.assembled(
         request_id=request_id,
-        document_id=document_id,
+        document_id=DOCUMENT_ID,
         draft_type=DraftType.CASE_FACT_SUMMARY,
         query="Другой запрос той же попытки",
         claims=(_claim(index=5),),
@@ -395,3 +402,22 @@ def test_citations_are_counted_only_for_supported_claims() -> None:
     draft = _draft((supported, rejected))
 
     assert draft.citations_total == 1
+
+
+def test_citation_to_another_documents_chunk_is_refused() -> None:
+    # Черновик отвечает по одному документу. Ссылка на чанк чужого документа —
+    # выдумка со ссылкой на настоящий источник: самый правдоподобный и потому
+    # самый опасный вид неподтверждённого утверждения.
+    draft_id = DraftId.generate()
+    claim_id = ClaimId.deterministic(draft_id=draft_id, claim_index=0)
+    foreign = Claim(
+        id=claim_id,
+        index=0,
+        section=ClaimSection.DOCUMENTS,
+        text="Договор № 12/АБ упомянут в другом деле.",
+        citations=(_citation(claim_id=claim_id, chunk=make_chunk()),),
+        supported=True,
+    )
+
+    with pytest.raises(InvariantViolation):
+        _draft((foreign,))
