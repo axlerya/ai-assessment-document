@@ -98,7 +98,7 @@ async def _count(
 
 async def _index_row(
     connection: AsyncConnection, document_id: uuid.UUID
-) -> tuple[str, int, int, int]:
+) -> tuple[str, int | None, int, int]:
     row = (
         await connection.execute(
             text(
@@ -110,7 +110,7 @@ async def _index_row(
     ).one()
     return (
         str(row.status),
-        int(row.chunks_total),
+        None if row.chunks_total is None else int(row.chunks_total),
         int(row.chunks_embedded),
         int(row.chunks_failed),
     )
@@ -127,6 +127,22 @@ async def _outbox(
         {"id": document_id},
     )
     return [dict(row._mapping) for row in rows]
+
+
+async def _reopen_run(connection: AsyncConnection, document_id: uuid.UUID) -> None:
+    """Возвращает прогон в состояние оборванного между пачками.
+
+    Именно так выглядит падение воркера: эмбеддинги части чанков записаны,
+    терминальная транзакция не выполнена.
+    """
+    await connection.execute(
+        text(
+            "UPDATE ai_document_index SET status = 'indexing', finished_at = NULL,"
+            " chunks_total = NULL, chunks_embedded = 0, chunks_failed = 0"
+            " WHERE document_id = :id"
+        ),
+        {"id": document_id},
+    )
 
 
 async def test_document_is_indexed_end_to_end_within_the_use_case(
@@ -200,7 +216,12 @@ async def test_nothing_is_written_when_the_terminal_transaction_fails(
             _command(document_id)
         )
 
-    assert await _index_row(indexing_connection, document_id) == ("indexing", 0, 0, 0)
+    assert await _index_row(indexing_connection, document_id) == (
+        "indexing",
+        None,
+        0,
+        0,
+    )
 
 
 class _RefusingOutbox:
@@ -288,12 +309,38 @@ async def test_chunk_with_unchanged_hash_is_not_re_embedded(
         page_id=await page_of(indexing_connection, document_id),
         texts=[CHUNK_TEXTS[2]],
     )
+    await _reopen_run(indexing_connection, document_id)
+
     resumed = FakeEmbeddings()
     await _use_case(reader=reader, uow_factory=uow_factory, provider=resumed)(
         _command(document_id)
     )
 
-    assert resumed.embedded_texts == ()
+    assert resumed.embedded_texts == (CHUNK_TEXTS[2],)
+
+
+async def test_already_processed_delivery_is_not_repeated(
+    indexing_connection: AsyncConnection,
+    reader: SqlAlchemyProcessedChunkReader,
+    uow_factory: UnitOfWorkFactory,
+) -> None:
+    # Барьер идемпотентности живёт на доставке, а не на прогоне: обработанное
+    # сообщение не повторяется, даже если прогон кто-то открыл заново.
+    document_id = uuid.uuid4()
+    await seed_document(indexing_connection, document_id=document_id)
+    command = _command(document_id)
+    await _use_case(reader=reader, uow_factory=uow_factory, provider=FakeEmbeddings())(
+        command
+    )
+    await _reopen_run(indexing_connection, document_id)
+
+    provider = FakeEmbeddings()
+    result = await _use_case(reader=reader, uow_factory=uow_factory, provider=provider)(
+        command
+    )
+
+    assert result.outcome is ClaimOutcome.SKIP
+    assert provider.batches == []
 
 
 async def test_version_bump_creates_a_parallel_namespace(
@@ -362,7 +409,9 @@ async def test_document_with_all_chunks_failed_is_marked_failed(
     )
 
     assert result.status is IndexStatus.FAILED
-    assert await _index_row(indexing_connection, document_id) == ("failed", 0, 0, 0)
+    # Счётчики записаны и в отказе: без них строка не объясняет, что именно
+    # не вышло, а это первое, что спрашивают при разборе.
+    assert await _index_row(indexing_connection, document_id) == ("failed", 3, 0, 3)
     assert await _outbox(indexing_connection, document_id) == []
 
 
@@ -537,10 +586,10 @@ async def test_failed_run_releases_its_claim(
     row = (
         await indexing_connection.execute(
             text(
-                "SELECT status, lease_expires_at FROM ai_processed_messages"
-                " WHERE event_id = :id"
+                "SELECT lease_expires_at <= now() AS expired FROM"
+                " ai_processed_messages WHERE event_id = :id"
             ),
             {"id": command.event_id.value},
         )
     ).one()
-    assert str(row.status) == "pending"
+    assert row.expired is True

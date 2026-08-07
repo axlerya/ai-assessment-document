@@ -101,10 +101,27 @@ async def add_chunks(
     texts: Sequence[str],
     chunking_version: str = "1.0.0",
 ) -> tuple[uuid.UUID, ...]:
-    """Добавляет чанки указанной версии чанкования."""
+    """Добавляет чанки указанной версии чанкования.
+
+    Позиция и смещение продолжают уже существующие: у чужой таблицы уникальны
+    `(document_id, chunking_version, page_id, start_offset)`, и нумерация с нуля
+    столкнулась бы с первой же добавкой к готовому документу.
+    """
+    tail = (
+        await connection.execute(
+            text(
+                "SELECT coalesce(max(chunk_index) + 1, 0) AS next_index,"
+                " coalesce(max(end_offset) + 1, 0) AS next_offset"
+                " FROM document_chunks"
+                " WHERE document_id = :id AND chunking_version = :version"
+            ),
+            {"id": document_id, "version": chunking_version},
+        )
+    ).one()
     created: list[uuid.UUID] = []
-    offset = 0
-    for index, chunk_text in enumerate(texts):
+    offset = int(tail.next_offset)
+    for position, chunk_text in enumerate(texts):
+        index = int(tail.next_index) + position
         chunk_id = uuid.uuid4()
         await connection.execute(
             _CHUNK,

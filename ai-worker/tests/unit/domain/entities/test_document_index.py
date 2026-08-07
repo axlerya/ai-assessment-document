@@ -188,3 +188,21 @@ def test_negative_counters_are_refused() -> None:
         _running().complete(
             chunks_total=1, chunks_embedded=2, chunks_failed=-1, at=FINISHED
         )
+
+
+def test_failure_records_how_many_chunks_it_tried() -> None:
+    # Строка отказа без счётчиков не объясняет, что именно не вышло, а это
+    # первое, что спрашивают при разборе.
+    failed = _running().fail(
+        code="no_indexable_chunks",
+        message="ни один чанк не дал представления",
+        at=FINISHED,
+        chunks_total=7,
+        chunks_failed=7,
+    )
+
+    assert (failed.chunks_total, failed.chunks_embedded, failed.chunks_failed) == (
+        7,
+        0,
+        7,
+    )
