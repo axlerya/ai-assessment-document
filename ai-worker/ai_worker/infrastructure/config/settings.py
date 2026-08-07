@@ -30,7 +30,8 @@ from ai_worker.application.config import (
     RetrievalConfig,
 )
 from ai_worker.domain.constants import DENSE_DIMENSIONS, SPARSE_TOP_K
-from ai_worker.domain.value_objects.embedding_identity import EmbeddingIdentity
+from ai_worker.domain.embedding.policy import EmbeddingPolicy
+from ai_worker.domain.errors import InvalidEmbeddingPolicy
 from ai_worker.domain.value_objects.versioning import EmbeddingVersion, PromptVersion
 
 SECRETS_DIR = Path("/run/secrets")
@@ -68,16 +69,37 @@ class RabbitSettings(Section):
 
 
 class EmbeddingSettings(Section):
-    """Модель представлений и её пределы."""
+    """Модель представлений и её пределы.
+
+    Всё, что меняет сам вектор, сверяется с реестром версий: правка здесь без
+    инкремента версии отвергается на старте (ADR-0004).
+    """
 
     version: str = "1.0.0"
     model_name: str = "BAAI/bge-m3"
     model_dir: Path = Path(".models")
     dimensions: Positive = DENSE_DIMENSIONS
     sparse_top_k: Positive = SPARSE_TOP_K
+    normalize: bool = True
+    # bge-m3 обучена без служебных префиксов, в отличие от семейства e5.
+    query_prefix: str = ""
+    passage_prefix: str = ""
     batch_size: Positive = 8
     max_input_tokens: Positive = 1024
     timeout_s: PositiveSeconds = 120.0
+
+    def policy(self) -> EmbeddingPolicy:
+        """Собирает политику версий из настроек."""
+        return EmbeddingPolicy(
+            version=EmbeddingVersion.parse(self.version),
+            model_name=self.model_name,
+            dimensions=self.dimensions,
+            normalize=self.normalize,
+            max_input_tokens=self.max_input_tokens,
+            sparse_top_k=self.sparse_top_k,
+            query_prefix=self.query_prefix,
+            passage_prefix=self.passage_prefix,
+        )
 
 
 class RerankSettings(Section):
@@ -178,7 +200,7 @@ class AppSettings(BaseSettings):
             ValueError: Один из пределов делает другой недостижимым.
         """
         self._check_timeouts()
-        self._check_vector_limits()
+        self._check_embedding_policy()
         self._check_pipeline_widths()
         return self
 
@@ -194,17 +216,14 @@ class AppSettings(BaseSettings):
         if self.messaging.claim_lease_s <= self.processing.message_timeout_s:
             raise ValueError("лиз захвата обязан быть строго больше таймаута сообщения")
 
-    def _check_vector_limits(self) -> None:
-        if self.embedding.dimensions != DENSE_DIMENSIONS:
-            raise ValueError(
-                f"ширина плотного вектора обязана совпадать с колонкой"
-                f" ({DENSE_DIMENSIONS})"
-            )
-        if self.embedding.sparse_top_k > SPARSE_TOP_K:
-            raise ValueError(
-                f"разреженный вектор не может нести больше {SPARSE_TOP_K} весов:"
-                " индекс откажется строиться"
-            )
+    def _check_embedding_policy(self) -> None:
+        # Пределы вектора и его сверка с реестром версий — одно и то же
+        # решение, принятое в домене. Повторять его здесь значило бы завести
+        # вторую формулировку, которая однажды разойдётся с первой.
+        try:
+            self.embedding.policy().ensure_registered()
+        except InvalidEmbeddingPolicy as error:
+            raise ValueError(error.message) from error
 
     def _check_pipeline_widths(self) -> None:
         if self.rerank.top_n < self.context.max_chunks:
@@ -221,14 +240,8 @@ class AppSettings(BaseSettings):
             message_timeout_s=self.processing.message_timeout_s,
             claim_lease_s=self.messaging.claim_lease_s,
             embedding=EmbeddingConfig(
-                identity=EmbeddingIdentity(
-                    version=EmbeddingVersion.parse(self.embedding.version),
-                    model_name=self.embedding.model_name,
-                ),
-                dimensions=self.embedding.dimensions,
-                sparse_top_k=self.embedding.sparse_top_k,
+                policy=self.embedding.policy(),
                 batch_size=self.embedding.batch_size,
-                max_input_tokens=self.embedding.max_input_tokens,
                 timeout_s=self.embedding.timeout_s,
             ),
             retrieval=RetrievalConfig(

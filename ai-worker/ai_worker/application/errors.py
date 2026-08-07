@@ -95,6 +95,22 @@ class InvariantRejectedByStorage(PermanentError):
     code: ClassVar[str] = "invariant_rejected_by_storage"
 
 
+class EmbeddingModelMissing(PermanentError):
+    """Файлов модели нет или они подменены.
+
+    Это ошибка конфигурации, а не сбой: повтор сообщения её не исправит, а
+    выданная за временную она отправила бы на бесконечный повтор всю очередь.
+    """
+
+    code: ClassVar[str] = "embedding_model_missing"
+
+
+class EmbeddingBackendUnavailable(TransientError):
+    """Прогон модели не состоялся: таймаут или упавший рабочий процесс."""
+
+    code: ClassVar[str] = "embedding_backend_unavailable"
+
+
 class DuplicateRecord(PermanentError):
     """Строка с таким ключом уже есть.
 
