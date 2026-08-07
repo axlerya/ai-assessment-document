@@ -22,12 +22,12 @@ if TYPE_CHECKING:
     from datetime import datetime
 
     from ai_worker.domain.value_objects.embedding_identity import EmbeddingIdentity
-    from ai_worker.domain.value_objects.enums import SourceStatus
-    from ai_worker.domain.value_objects.identifiers import DocumentId
-    from ai_worker.domain.value_objects.versioning import (
-        ChunkingVersion,
-        PipelineVersion,
+    from ai_worker.domain.value_objects.identifiers import (
+        CorrelationId,
+        DocumentId,
+        EventId,
     )
+    from ai_worker.domain.value_objects.source_snapshot import SourceSnapshot
 
 
 def _require_utc(moment: datetime, *, field: str) -> None:
@@ -45,10 +45,12 @@ class DocumentIndex:
     id: IndexId
     document_id: DocumentId
     embedding: EmbeddingIdentity
-    chunking_version: ChunkingVersion
-    pipeline_version: PipelineVersion
-    source_status: SourceStatus
+    source: SourceSnapshot
+    # Сообщение, с которого началась индексация: по нему разбирается, какая
+    # доставка породила этот прогон.
+    source_event_id: EventId
     status: IndexStatus
+    correlation_id: CorrelationId | None = None
     chunks_total: int | None = None
     chunks_embedded: int = 0
     chunks_failed: int = 0
@@ -63,9 +65,9 @@ class DocumentIndex:
         *,
         document_id: DocumentId,
         embedding: EmbeddingIdentity,
-        chunking_version: ChunkingVersion,
-        pipeline_version: PipelineVersion,
-        source_status: SourceStatus,
+        source: SourceSnapshot,
+        source_event_id: EventId,
+        correlation_id: CorrelationId | None = None,
     ) -> Self:
         """Заводит прогон индексации с детерминированным ключом."""
         return cls(
@@ -74,10 +76,10 @@ class DocumentIndex:
             ),
             document_id=document_id,
             embedding=embedding,
-            chunking_version=chunking_version,
-            pipeline_version=pipeline_version,
-            source_status=source_status,
+            source=source,
+            source_event_id=source_event_id,
             status=IndexStatus.PENDING,
+            correlation_id=correlation_id,
         )
 
     @property

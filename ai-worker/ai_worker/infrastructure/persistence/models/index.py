@@ -6,6 +6,7 @@ import datetime as dt
 import uuid
 from decimal import Decimal
 
+from pgvector import SparseVector
 from pgvector.sqlalchemy import SPARSEVEC, Vector
 from sqlalchemy import (
     CheckConstraint,
@@ -176,7 +177,7 @@ class ChunkEmbeddingRow(Base):
     model_name: Mapped[str] = mapped_column(String(128))
     content_hash: Mapped[str] = mapped_column(String(64))
     dense: Mapped[list[float]] = mapped_column(Vector(DENSE_DIMENSIONS))
-    sparse: Mapped[object] = mapped_column(SPARSEVEC(SPARSE_DIMENSIONS))
+    sparse: Mapped[SparseVector] = mapped_column(SPARSEVEC(SPARSE_DIMENSIONS))
     token_count: Mapped[int] = mapped_column(Integer)
     extraction_method: Mapped[str] = mapped_column(String(16))
     avg_ocr_confidence: Mapped[Decimal | None] = mapped_column()
