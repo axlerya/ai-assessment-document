@@ -165,3 +165,34 @@ def test_result_is_always_sorted_by_index(weights: dict[int, float]) -> None:
 
     assert indexes == sorted(indexes)
     assert len(set(indexes)) == len(indexes)
+
+
+def test_normalized_vector_has_unit_length() -> None:
+    # Косинусная близость сравнивает направления: ненормированные векторы
+    # ранжируются по длине, а не по смыслу.
+    vector = DenseVector(
+        tuple(float(index % 7) + 1.0 for index in range(DENSE_DIMENSIONS))
+    )
+
+    assert math.isclose(math.hypot(*vector.normalized().values), 1.0, rel_tol=1e-12)
+
+
+def test_normalization_keeps_direction() -> None:
+    values = tuple(float(index % 5) + 0.5 for index in range(DENSE_DIMENSIONS))
+    normalized = DenseVector(values).normalized().values
+
+    ratios = {round(value / normalized[index], 9) for index, value in enumerate(values)}
+    assert len(ratios) == 1
+
+
+def test_normalizing_a_normalized_vector_changes_nothing() -> None:
+    once = DenseVector(_dense()).normalized()
+
+    assert once.normalized() == once
+
+
+def test_zero_vector_cannot_be_normalized() -> None:
+    # Деление на нулевую длину дало бы NaN, а с ним любое расстояние
+    # становится NaN и поиск молча возвращает произвольный порядок.
+    with pytest.raises(InvalidVector, match="нулев"):
+        DenseVector(tuple(0.0 for _ in range(DENSE_DIMENSIONS))).normalized()
