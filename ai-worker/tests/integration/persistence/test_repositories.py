@@ -568,11 +568,8 @@ async def test_rescheduled_event_waits_and_counts_the_attempt(
 # --------------------------- история поиска ---------------------------
 
 
-async def test_retrieval_run_is_recorded_with_its_hits(
-    uow: SqlAlchemyUnitOfWork,
-    connection: AsyncConnection,
-) -> None:
-    run = RetrievalRunDTO(
+def _run(*, selected: int) -> RetrievalRunDTO:
+    return RetrievalRunDTO(
         run_id=uuid.uuid4(),
         draft_id=None,
         document_id=DocumentId.generate(),
@@ -584,11 +581,18 @@ async def test_retrieval_run_is_recorded_with_its_hits(
         sparse_candidates=50,
         fused_candidates=70,
         reranked=50,
-        selected=1,
+        selected=selected,
         context_tokens=6000,
         duration_ms=1200,
         created_at=NOW,
     )
+
+
+async def test_retrieval_run_is_recorded_with_its_hits(
+    uow: SqlAlchemyUnitOfWork,
+    connection: AsyncConnection,
+) -> None:
+    run = _run(selected=1)
     hits = (
         RetrievalHitDTO(
             chunk_id=ChunkId.generate(),
@@ -608,3 +612,40 @@ async def test_retrieval_run_is_recorded_with_its_hits(
 
     assert await _rows(connection, "ai_retrieval_runs") == 1
     assert await _rows(connection, "ai_retrieval_hits") == 1
+
+
+async def test_draft_without_claims_is_saved_as_insufficient_evidence(
+    uow: SqlAlchemyUnitOfWork,
+    connection: AsyncConnection,
+) -> None:
+    # Модель может не вернуть ни одного утверждения: это не поломка, а честный
+    # отказ выдумывать — и он обязан сохраниться вместе со своим объяснением.
+    draft = make_draft(claims=())
+    await uow.drafts.save(draft)
+
+    assert await _rows(connection, "ai_drafts") == 1
+    assert await _rows(connection, "ai_draft_claims") == 0
+    assert await _rows(connection, "ai_draft_citations") == 0
+
+
+async def test_retrieval_run_without_hits_is_still_recorded(
+    uow: SqlAlchemyUnitOfWork,
+    connection: AsyncConnection,
+) -> None:
+    # Пустая выдача — тоже результат: без записи прогона нечем объяснить, что
+    # поиск отработал и не нашёл ничего.
+    await uow.retrieval.record(_run(selected=0), ())
+
+    assert await _rows(connection, "ai_retrieval_runs") == 1
+    assert await _rows(connection, "ai_retrieval_hits") == 0
+
+
+async def test_marking_nothing_published_touches_nothing(
+    uow: SqlAlchemyUnitOfWork,
+) -> None:
+    event = _event()
+    await uow.outbox.enqueue([event])
+
+    await uow.outbox.mark_published([], published_at=LATER)
+
+    assert len(await _fetch(uow)) == 1
