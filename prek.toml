@@ -24,7 +24,7 @@ rev = "v6.0.0"
 hooks = [
   { id = "debug-statements", files = "^(document-worker|ai-worker)/(document_worker|ai_worker|tests|scripts|eval)/.*\\.py$" },
   # conftest, фабрики, стратегии и фейки — общий инвентарь тестов, а не сами тесты.
-  { id = "name-tests-test", args = ["--pytest-test-first"], files = "^(document-worker|ai-worker)/tests/.*\\.py$", exclude = "(^|/)(conftest|factories|strategies|support)\\.py$|^(document-worker|ai-worker)/tests/fakes/" },
+  { id = "name-tests-test", args = ["--pytest-test-first"], files = "^(document-worker|ai-worker)/tests/.*\\.py$", exclude = "(^|/)(conftest|factories|strategies|support)\\.py$|^(document-worker|ai-worker)/tests/(fakes|support)/" },
   { id = "check-executables-have-shebangs" },
   # Прямой коммит в main обходит ревью целиком: правило есть в AGENTS.md, но
   # до сих пор его исполняла только дисциплина.

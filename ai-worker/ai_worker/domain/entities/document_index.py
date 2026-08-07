@@ -137,8 +137,21 @@ class DocumentIndex:
             finished_at=at,
         )
 
-    def fail(self, *, code: str, message: str, at: datetime) -> Self:
+    def fail(
+        self,
+        *,
+        code: str,
+        message: str,
+        at: datetime,
+        chunks_total: int | None = None,
+        chunks_failed: int = 0,
+    ) -> Self:
         """Завершает прогон отказом.
+
+        Счётчики записываются и здесь: строка отказа без них не объясняет, что
+        именно не вышло, а это первое, что спрашивают при разборе. Проверка на
+        сходимость к ним не применяется — успешных чанков в отказе нет по
+        определению.
 
         Raises:
             InvalidStatusTransition: Прогон уже завершён успешно — это не
@@ -159,6 +172,8 @@ class DocumentIndex:
         return replace(
             self,
             status=IndexStatus.FAILED,
+            chunks_total=chunks_total,
+            chunks_failed=chunks_failed,
             failure_code=code,
             failure_message=message,
             finished_at=at,
